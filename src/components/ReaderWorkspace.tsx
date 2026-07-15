@@ -119,7 +119,16 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     if (imported.meta?.language || imported.meta?.nativeLang) {
       await supabase.from('lexicons').update({ target_language: imported.meta.language || imported.meta.targetLang || activeLexicon.target_language, native_language: imported.meta.nativeLang || imported.meta.defLang || imported.meta.native || activeLexicon.native_language }).eq('id', activeLexicon.id);
     }
-    for (const e of imported.entries) await upsertEntry(e.target, e as Partial<LexiconEntry>);
+    const rows = imported.entries.map(e => ({
+      ...e,
+      lexicon_id: activeLexicon.id,
+      owner_id: userId
+    }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from('lexicon_entries').upsert(rows.slice(i, i + 500), { onConflict: 'lexicon_id,normalized_key' });
+      if (error) return alert(error.message);
+    }
+    await loadEntries(activeLexicon.id);
     await refreshAll();
   }
 
