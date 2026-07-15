@@ -5,3 +5,4 @@ dist
 .env.local
 .vite
 tsconfig.tsbuildinfo
+*.tgz
