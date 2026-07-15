@@ -55,8 +55,24 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
 
   async function loadEntries(lexiconId: string) {
     if (!supabase) return;
-    const { data } = await supabase.from('lexicon_entries').select('*').eq('lexicon_id', lexiconId).order('target');
-    setEntries((data || []) as LexiconEntry[]);
+    const pageSize = 1000;
+    const allEntries: LexiconEntry[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from('lexicon_entries')
+        .select('*')
+        .eq('lexicon_id', lexiconId)
+        .order('target')
+        .range(from, from + pageSize - 1);
+      if (error) {
+        alert(error.message);
+        break;
+      }
+      const page = (data || []) as LexiconEntry[];
+      allEntries.push(...page);
+      if (page.length < pageSize) break;
+    }
+    setEntries(allEntries);
   }
 
   async function createLexicon() {
