@@ -53,11 +53,11 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .reader-text p { margin-top: 0; }
 .token { display: inline; padding: 1px 2px; margin-inline-end: 2px; border: 0; background: transparent; border-radius: 4px; font-size: inherit; line-height: inherit; }
 .token:hover { background: #eef2f7; }
-.status-0 { color: #b42318; }
-.status-1, .status-new { color: #1b4ed8; }
-.status-2 { color: #b7791f; }
-.status-3 { color: #11845b; }
-.status-4 { color: #64748b; }
+.status-0 { color: #b00020; background: #ffe3e3; }
+.status-1, .status-new { color: #0039c7; background: #e4ecff; }
+.status-2 { color: #8a4b00; background: #fff0b8; }
+.status-3 { color: #006b35; background: #d9fbe7; }
+.status-4 { color: #334155; background: #e2e8f0; }
 .punct { margin-inline-end: 4px; }
 .entry-editor { padding: 16px; display: grid; gap: 13px; align-content: start; }
 .entry-editor header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
