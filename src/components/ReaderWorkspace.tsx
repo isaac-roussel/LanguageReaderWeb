@@ -122,7 +122,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
       const { data, error } = await supabase.from('lexicons').insert({
         owner_id: userId,
         title,
-        target_language: imported.meta?.language || imported.meta?.targetLang || imported.meta?.lang || 'auto',
+        target_language: imported.meta?.language || imported.meta?.targetLang || 'auto',
         native_language: imported.meta?.nativeLang || imported.meta?.defLang || imported.meta?.native || 'en'
       }).select('*').single();
       if (error) return alert(error.message);
