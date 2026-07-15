@@ -113,22 +113,35 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   }
 
   async function importJson(file: File) {
-    if (!supabase || !activeLexicon) return;
+    if (!supabase) return;
     const raw = await file.text();
     const imported = desktopEntriesFromJson(raw);
-    if (imported.meta?.language || imported.meta?.nativeLang) {
-      await supabase.from('lexicons').update({ target_language: imported.meta.language || imported.meta.targetLang || activeLexicon.target_language, native_language: imported.meta.nativeLang || imported.meta.defLang || imported.meta.native || activeLexicon.native_language }).eq('id', activeLexicon.id);
+    let targetLexicon = activeLexicon;
+    if (!targetLexicon) {
+      const title = file.name.replace(/\.json$/i, '').replace(/([a-z])([A-Z])/g, '$1 $2') || 'Imported Lexicon';
+      const { data, error } = await supabase.from('lexicons').insert({
+        owner_id: userId,
+        title,
+        target_language: imported.meta?.language || imported.meta?.targetLang || imported.meta?.lang || 'auto',
+        native_language: imported.meta?.nativeLang || imported.meta?.defLang || imported.meta?.native || 'en'
+      }).select('*').single();
+      if (error) return alert(error.message);
+      targetLexicon = data as Lexicon;
+      setLexicons(prev => [targetLexicon!, ...prev]);
+      setActiveLexicon(targetLexicon);
+    } else if (imported.meta?.language || imported.meta?.nativeLang) {
+      await supabase.from('lexicons').update({ target_language: imported.meta.language || imported.meta.targetLang || targetLexicon.target_language, native_language: imported.meta.nativeLang || imported.meta.defLang || imported.meta.native || targetLexicon.native_language }).eq('id', targetLexicon.id);
     }
     const rows = imported.entries.map(e => ({
       ...e,
-      lexicon_id: activeLexicon.id,
+      lexicon_id: targetLexicon.id,
       owner_id: userId
     }));
     for (let i = 0; i < rows.length; i += 500) {
       const { error } = await supabase.from('lexicon_entries').upsert(rows.slice(i, i + 500), { onConflict: 'lexicon_id,normalized_key' });
       if (error) return alert(error.message);
     }
-    await loadEntries(activeLexicon.id);
+    await loadEntries(targetLexicon.id);
     await refreshAll();
   }
 
@@ -175,7 +188,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
             {lexicons.map(l => <option key={l.id} value={l.id}>{l.title}</option>)}
           </select>
           <div className="button-row">
-            <button onClick={() => importRef.current?.click()} disabled={!activeLexicon}><Import size={15}/> Import</button>
+            <button onClick={() => importRef.current?.click()}><Import size={15}/> Import</button>
             <button onClick={exportJson} disabled={!activeLexicon}><Download size={15}/> Export</button>
           </div>
           <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => e.target.files?.[0] && void importJson(e.target.files[0])}/>
