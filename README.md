@@ -7,6 +7,7 @@ A web-native, invite-only, multi-user version of Language Reader.
 1. Create a Supabase project.
 2. Run `supabase/schema.sql` in the Supabase SQL editor.
 3. Copy `.env.example` to `.env.local` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+   These are the only Supabase values the web app needs for normal sign-in and reader use.
 4. Run `npm install` and `npm run dev`.
 
 ## Production activation
@@ -54,3 +55,4 @@ npm run import:lexicons -- --dir "C:\Users\isaac\Documents\Language\Lexicons"
 ```
 
 The importer preserves target terms, definitions, status `0-4`, word/phrase scope, notes, and review metadata when present.
+The service-role key is only needed for this optional importer; do not put it in the deployed web app.
