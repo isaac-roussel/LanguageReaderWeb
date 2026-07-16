@@ -183,9 +183,38 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     window.open(deepLUrl(text, activeLexicon?.target_language || 'auto', activeLexicon?.native_language || 'en'), '_blank', 'noopener,noreferrer');
   }
 
-  function tokenClass(token: string) {
+  const phraseEntries = useMemo(() => entries
+    .filter(e => e.scope === 'phrase')
+    .map(e => ({
+      status: e.status,
+      parts: normalizedKey(e.target).split(' ').filter(Boolean)
+    }))
+    .filter(e => e.parts.length > 1)
+    .sort((a, b) => b.parts.length - a.parts.length), [entries]);
+
+  function phraseClasses(tokens: string[]) {
+    const classes = Array(tokens.length).fill('');
+    const words = tokens.map((token, index) => ({ token, index, key: normalizedKey(token) })).filter(item => isWordToken(item.token));
+
+    for (let i = 0; i < words.length; i += 1) {
+      if (classes[words[i].index]) continue;
+      const phrase = phraseEntries.find(candidate =>
+        candidate.parts.every((part, offset) => words[i + offset]?.key === part)
+      );
+      if (!phrase) continue;
+      phrase.parts.forEach((_, offset) => {
+        const word = words[i + offset];
+        if (word) classes[word.index] = ` phrase phrase-status-${phrase.status}`;
+      });
+      i += phrase.parts.length - 1;
+    }
+
+    return classes;
+  }
+
+  function tokenClass(token: string, phraseClass = '') {
     const entry = entryMap.get(normalizedKey(token));
-    return entry ? `token status-${entry.status}` : 'token status-new';
+    return `${entry ? `token status-${entry.status}` : 'token status-new'}${phraseClass}`;
   }
 
   return (
@@ -239,9 +268,12 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                 <button onClick={() => speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>Read</button>
               </div>
               <article className="reader-text">
-                {visibleSentences.map((s, si) => <p key={`${s.raw}-${si}`}>{s.tokens.map((token, ti) => isWordToken(token)
-                  ? <button key={`${token}-${ti}`} className={tokenClass(token)} onClick={() => { const entry = entryMap.get(normalizedKey(token)); setSelected(entry || null); if (!entry) void upsertEntry(token, { status: 1 }); }}>{token}</button>
-                  : <span key={`${token}-${ti}`} className="punct">{token}</span>)}</p>)}
+                {visibleSentences.map((s, si) => {
+                  const phraseTokenClasses = phraseClasses(s.tokens);
+                  return <p key={`${s.raw}-${si}`}>{s.tokens.map((token, ti) => isWordToken(token)
+                    ? <button key={`${token}-${ti}`} className={tokenClass(token, phraseTokenClasses[ti])} onClick={() => { const entry = entryMap.get(normalizedKey(token)); setSelected(entry || null); if (!entry) void upsertEntry(token, { status: 1 }); }}>{token}</button>
+                    : <span key={`${token}-${ti}`} className="punct">{token}</span>)}</p>;
+                })}
               </article>
             </>}
           </div>

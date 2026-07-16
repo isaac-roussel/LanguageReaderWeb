@@ -57,7 +57,18 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .status-1, .status-new { color: #0039c7; background: #e4ecff; }
 .status-2 { color: #8a4b00; background: #fff0b8; }
 .status-3 { color: #006b35; background: #d9fbe7; }
-.status-4 { color: #334155; background: #e2e8f0; }
+.status-4 { color: inherit; background: transparent; }
+.phrase {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: .2em;
+  text-decoration-thickness: 3px;
+}
+.phrase-status-0 { text-decoration-color: #ef4444; }
+.phrase-status-1 { text-decoration-color: #3b82f6; }
+.phrase-status-2 { text-decoration-color: #f59e0b; }
+.phrase-status-3 { text-decoration-color: #10b981; }
+.phrase-status-4 { text-decoration-color: #6b7280; }
 .punct { margin-inline-end: 4px; }
 .entry-editor { padding: 16px; display: grid; gap: 13px; align-content: start; }
 .entry-editor header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
