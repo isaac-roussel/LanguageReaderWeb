@@ -1,4 +1,5 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,3 +37,8 @@ export default {
   }
 };
 `.trimStart());
+
+execFileSync('tar', ['-czf', join(root, 'language-reader-web-sites-build.tgz'), 'dist'], {
+  cwd: root,
+  stdio: 'inherit'
+});
