@@ -237,18 +237,17 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     return selection.toString().replace(/\s+/g, ' ').trim();
   }
 
-  const addSelectedPhrase = useCallback(async (openTranslator = false) => {
+  const addSelectedPhrase = useCallback(async () => {
     const phrase = selectedReaderText();
     if (!phrase) {
       alert('Select a phrase in the reader first.');
       return;
     }
-    if (openTranslator) openDeepL(phrase);
     const saved = await upsertEntry(phrase, { scope: 'phrase' });
     if (!saved) return;
     setReaderTokenSelection([]);
     window.getSelection()?.removeAllRanges();
-  }, [entryMap, activeLexicon?.id, userId, activeLexicon?.target_language, activeLexicon?.native_language, selectedReaderPhrase]);
+  }, [entryMap, activeLexicon?.id, userId, selectedReaderPhrase]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -257,7 +256,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
       if (event.altKey && event.key.toLowerCase() === 't') {
         event.preventDefault();
-        void addSelectedPhrase(true);
+        void addSelectedPhrase();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -369,8 +368,8 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                 <div className="segmented small"><button className={readerMode === 'sentence' ? 'active' : ''} onClick={() => setReaderMode('sentence')}>Sentence</button><button className={readerMode === 'full' ? 'active' : ''} onClick={() => setReaderMode('full')}>Full text</button></div>
                 {readerMode === 'sentence' && <div className="pager"><button onClick={() => setSentenceIndex(Math.max(0, sentenceIndex - 1))}>Previous</button><span>{Math.min(sentenceIndex + 1, sentences.length)} / {sentences.length}</span><button onClick={() => setSentenceIndex(Math.min(sentences.length - 1, sentenceIndex + 1))}>Next</button></div>}
                 <div className="button-row reader-actions">
-                  <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase(true)}><Search size={16}/> Look up</button>
-                  <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase(false)}>Add phrase</button>
+                  <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase()}><Search size={16}/> Look up</button>
+                  <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase()}>Add phrase</button>
                   {selectedReaderPhrase && <button className="ghost" onClick={() => setReaderTokenSelection([])}>Clear</button>}
                 </div>
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
