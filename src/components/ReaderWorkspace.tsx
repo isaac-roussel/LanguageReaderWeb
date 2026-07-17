@@ -28,6 +28,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [draftText, setDraftText] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
   const [readerTokenSelection, setReaderTokenSelection] = useState<ReaderTokenSelection[]>([]);
+  const [inlinePhraseEntryId, setInlinePhraseEntryId] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -222,6 +223,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     setDraftTitle('');
     setDraftText('');
     setSelected(null);
+    setInlinePhraseEntryId(null);
   }
 
   function selectedReaderText() {
@@ -246,6 +248,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     if (openTranslator) openDeepL(phrase);
     const saved = await upsertEntry(phrase, { scope: 'phrase' });
     if (!saved) return;
+    setInlinePhraseEntryId(saved.id);
     setReaderTokenSelection([]);
     window.getSelection()?.removeAllRanges();
   }, [entryMap, activeLexicon?.id, userId, activeLexicon?.target_language, activeLexicon?.native_language, selectedReaderPhrase]);
@@ -300,6 +303,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
 
   function openToken(token: string) {
     setReaderTokenSelection([]);
+    setInlinePhraseEntryId(null);
     const entry = entryMap.get(normalizedKey(token));
     setSelected(entry || null);
     if (!entry) void upsertEntry(token, { status: 1 });
@@ -376,6 +380,17 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
                 {selectedReaderPhrase && <div className="phrase-preview">{selectedReaderPhrase}</div>}
               </div>
+              {selected?.scope === 'phrase' && selected.id === inlinePhraseEntryId && <section className="entry-editor inline-entry-editor">
+                <EntryEditorFields
+                  selected={selected}
+                  onChange={updateSelected}
+                  onDeepL={openDeepL}
+                  onClear={() => {
+                    setReaderTokenSelection([]);
+                    setInlinePhraseEntryId(null);
+                  }}
+                />
+              </section>}
               <article className="reader-text">
                 {visibleSentences.map((s, si) => {
                   const sentenceOrder = readerMode === 'sentence' ? sentenceIndex + si : si;
@@ -430,18 +445,24 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
 }
 
 function EntryEditor({ selected, onChange, onDeepL }: { selected: LexiconEntry | null; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void }) {
-  const [nativeText, setNativeText] = useState('');
-  const [notes, setNotes] = useState('');
-  useEffect(() => { setNativeText((selected?.native || []).join('\n')); setNotes(selected?.notes || ''); }, [selected?.id]);
   if (!selected) return <aside className="panel entry-editor empty"><p>Select a word to edit its lexicon entry.</p></aside>;
   return <aside className="panel entry-editor">
-    <header><h2>{selected.target}</h2><button onClick={() => onDeepL(selected.target)}>DeepL</button></header>
+    <EntryEditorFields selected={selected} onChange={onChange} onDeepL={onDeepL} />
+  </aside>;
+}
+
+function EntryEditorFields({ selected, onChange, onDeepL, onClear }: { selected: LexiconEntry; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void; onClear?: () => void }) {
+  const [nativeText, setNativeText] = useState('');
+  const [notes, setNotes] = useState('');
+  useEffect(() => { setNativeText((selected.native || []).join('\n')); setNotes(selected.notes || ''); }, [selected.id, selected.native, selected.notes]);
+  return <>
+    <header><h2>{selected.target}</h2><div className="button-row"><button onClick={() => onDeepL(selected.target)}>DeepL</button>{onClear && <button className="ghost" onClick={onClear}>Clear</button>}</div></header>
     <label>Status<select value={selected.status} onChange={e => onChange({ status: clampStatus(e.target.value) })}>{statusLabel.map((label, i) => <option key={label} value={i}>{i} - {label}</option>)}</select></label>
     <div className="status-actions">{statusLabel.map((label, status) => <button key={label} className={selected.status === status ? 'active' : ''} onClick={() => onChange({ status: clampStatus(status) })}>{label}</button>)}</div>
     <label>Definitions<textarea value={nativeText} onChange={e => setNativeText(e.target.value)} onBlur={() => onChange({ native: splitLines(nativeText) })}/></label>
     <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => onChange({ notes })}/></label>
     <button className="primary" onClick={() => onChange({ native: splitLines(nativeText), notes })}><Save size={16}/> Save</button>
-  </aside>;
+  </>;
 }
 
 function ReviewColumn({ title, entries, actionLabel, onAction }: { title: string; entries: LexiconEntry[]; actionLabel: string; onAction: (entry: LexiconEntry) => void }) {
