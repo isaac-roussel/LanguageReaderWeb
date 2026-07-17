@@ -52,8 +52,9 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .pager { display: flex; align-items: center; gap: 8px; color: #53627a; }
 .reader-text { padding: 28px; font-size: 25px; line-height: 2; overflow: auto; }
 .reader-text p { margin-top: 0; }
-.token { display: inline; padding: 1px 2px; margin-inline-end: 2px; border: 0; background: transparent; border-radius: 4px; font-size: inherit; line-height: inherit; }
+.token { display: inline; padding: 1px 2px; margin-inline-end: 2px; border: 0; background: transparent; border-radius: 4px; font-size: inherit; line-height: inherit; cursor: pointer; user-select: text; }
 .token:hover { background: #eef2f7; }
+.token:focus-visible { outline: 2px solid #1b4ed8; outline-offset: 2px; }
 .status-0 { color: #b00020; background: #ffe3e3; }
 .status-1, .status-new { color: #0039c7; background: #e4ecff; }
 .status-2 { color: #8a4b00; background: #fff0b8; }

@@ -281,6 +281,16 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     return `${entry ? `token status-${entry.status}` : 'token status-new'}${phraseClass}`;
   }
 
+  function openToken(token: string) {
+    const entry = entryMap.get(normalizedKey(token));
+    setSelected(entry || null);
+    if (!entry) void upsertEntry(token, { status: 1 });
+  }
+
+  function hasActiveSelection() {
+    return Boolean(window.getSelection()?.toString().trim());
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -339,7 +349,19 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                 {visibleSentences.map((s, si) => {
                   const phraseTokenClasses = phraseClasses(s.tokens);
                   return <p key={`${s.raw}-${si}`}>{s.tokens.map((token, ti) => isWordToken(token)
-                    ? <button key={`${token}-${ti}`} className={tokenClass(token, phraseTokenClasses[ti])} onClick={() => { const entry = entryMap.get(normalizedKey(token)); setSelected(entry || null); if (!entry) void upsertEntry(token, { status: 1 }); }}>{token}</button>
+                    ? <span
+                        key={`${token}-${ti}`}
+                        role="button"
+                        tabIndex={0}
+                        className={tokenClass(token, phraseTokenClasses[ti])}
+                        onClick={() => { if (!hasActiveSelection()) openToken(token); }}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openToken(token);
+                          }
+                        }}
+                      >{token}</span>
                     : <span key={`${token}-${ti}`} className="punct">{token}</span>)}</p>;
                 })}
               </article>
