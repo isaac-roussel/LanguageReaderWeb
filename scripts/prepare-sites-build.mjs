@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,9 @@ const openAiDir = join(dist, '.openai');
 mkdirSync(serverDir, { recursive: true });
 mkdirSync(openAiDir, { recursive: true });
 copyFileSync(join(root, '.openai', 'hosting.json'), join(openAiDir, 'hosting.json'));
+rmSync(join(dist, 'assets'), { recursive: true, force: true });
+copyFileSync(join(client, 'index.html'), join(dist, 'index.html'));
+cpSync(join(client, 'assets'), join(dist, 'assets'), { recursive: true });
 
 let html = readFileSync(join(client, 'index.html'), 'utf8');
 html = html.replace(/<link rel="stylesheet" crossorigin href="([^"]+)">/g, (_match, href) => {
