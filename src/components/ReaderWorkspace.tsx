@@ -173,6 +173,23 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     await upsertEntry(selected.target, patch);
   }
 
+  async function deleteSelectedEntry() {
+    if (!supabase || !selected) return;
+    const confirmed = window.confirm(`Delete "${selected.target}" from this lexicon? This cannot be undone.`);
+    if (!confirmed) return;
+    const entryId = selected.id;
+    const { error } = await supabase
+      .from('lexicon_entries')
+      .delete()
+      .eq('id', entryId)
+      .eq('owner_id', userId);
+    if (error) return alert(error.message);
+    setEntries(prev => prev.filter(entry => entry.id !== entryId));
+    setSelected(null);
+    setReaderTokenSelection([]);
+    setReaderPopup(current => ({ ...current, open: false }));
+  }
+
   async function importJson(file: File) {
     if (!supabase) return;
     const raw = await file.text();
@@ -549,7 +566,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
               </div>
             </div>
             <div className="entry-editor reader-popup-editor">
-              <EntryEditorFields selected={selected} onChange={updateSelected} onDeepL={openDeepL} />
+              <EntryEditorFields selected={selected} onChange={updateSelected} onDeepL={openDeepL} onDelete={deleteSelectedEntry} />
             </div>
           </div>}
         </section>}
@@ -557,7 +574,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
         {view === 'dictionary' && <section className="panel dictionary-panel">
           <label className="search"><Search size={16}/><input placeholder="Search target, definition, or notes" value={query} onChange={e => setQuery(e.target.value)} /></label>
           <div className="entry-list">{filteredEntries.map(e => <button key={e.id} onClick={() => setSelected(e)} className={selected?.id === e.id ? 'active' : ''}><strong>{e.target}</strong><span>{e.native.join(' • ') || 'No definition'}</span><em>{statusLabel[e.status]}</em></button>)}</div>
-          <EntryEditor selected={selected} onChange={updateSelected} onDeepL={openDeepL} />
+          <EntryEditor selected={selected} onChange={updateSelected} onDeepL={openDeepL} onDelete={deleteSelectedEntry} />
         </section>}
 
         {view === 'review' && <section className="review-grid">
@@ -569,14 +586,14 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   );
 }
 
-function EntryEditor({ selected, onChange, onDeepL }: { selected: LexiconEntry | null; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void }) {
+function EntryEditor({ selected, onChange, onDeepL, onDelete }: { selected: LexiconEntry | null; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void; onDelete: () => void }) {
   if (!selected) return <aside className="panel entry-editor empty"><p>Select a word to edit its lexicon entry.</p></aside>;
   return <aside className="panel entry-editor">
-    <EntryEditorFields selected={selected} onChange={onChange} onDeepL={onDeepL} />
+    <EntryEditorFields selected={selected} onChange={onChange} onDeepL={onDeepL} onDelete={onDelete} />
   </aside>;
 }
 
-function EntryEditorFields({ selected, onChange, onDeepL }: { selected: LexiconEntry; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void }) {
+function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected: LexiconEntry; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void; onDelete: () => void }) {
   const [nativeText, setNativeText] = useState('');
   const [notes, setNotes] = useState('');
   useEffect(() => { setNativeText((selected.native || []).join('\n')); setNotes(selected.notes || ''); }, [selected.id, selected.native, selected.notes]);
@@ -586,7 +603,10 @@ function EntryEditorFields({ selected, onChange, onDeepL }: { selected: LexiconE
     <div className="status-actions">{statusLabel.map((label, status) => <button key={label} className={selected.status === status ? 'active' : ''} onClick={() => onChange({ status: clampStatus(status) })}>{label}</button>)}</div>
     <label>Definitions<textarea value={nativeText} onChange={e => setNativeText(e.target.value)} onBlur={() => onChange({ native: splitLines(nativeText) })}/></label>
     <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => onChange({ notes })}/></label>
-    <button className="primary" onClick={() => onChange({ native: splitLines(nativeText), notes })}><Save size={16}/> Save</button>
+    <div className="entry-editor-actions">
+      <button className="primary" onClick={() => onChange({ native: splitLines(nativeText), notes })}><Save size={16}/> Save</button>
+      <button className="danger" onClick={onDelete}>Delete</button>
+    </div>
   </>;
 }
 

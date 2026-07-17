@@ -79,6 +79,8 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .entry-editor header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .entry-editor h2 { margin: 0; overflow-wrap: anywhere; }
 .entry-editor.empty { color: #6a768b; place-items: center; }
+.entry-editor-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+.entry-editor-actions button { flex: 1; }
 .reader-popup { position: fixed; z-index: 30; width: 380px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: auto; }
 .reader-popup-titlebar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border-bottom: 1px solid #e3e9f2; color: #53627a; font-size: 13px; cursor: move; user-select: none; touch-action: none; }
 .reader-popup-titlebar button { width: 32px; height: 32px; padding: 0; }
