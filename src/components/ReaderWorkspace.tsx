@@ -22,12 +22,18 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [query, setQuery] = useState('');
   const [readerMode, setReaderMode] = useState<'full' | 'sentence'>('sentence');
   const [sentenceIndex, setSentenceIndex] = useState(0);
+  const [isReading, setIsReading] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
   const importRef = useRef<HTMLInputElement>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => { void refreshAll(); }, []);
   useEffect(() => { if (activeLexicon) void loadEntries(activeLexicon.id); }, [activeLexicon?.id]);
+  useEffect(() => () => {
+    window.speechSynthesis.cancel();
+    utteranceRef.current = null;
+  }, []);
 
   const entryMap = useMemo(() => new Map(entries.map(e => [e.normalized_key, e])), [entries]);
   const sentences = useMemo(() => parseSentences(activeText?.content || ''), [activeText?.content]);
@@ -172,10 +178,28 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     URL.revokeObjectURL(url);
   }
 
+  function stopSpeech() {
+    window.speechSynthesis.cancel();
+    utteranceRef.current = null;
+    setIsReading(false);
+  }
+
   function speak(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = pickSpeechLocale(activeLexicon?.target_language);
+    utteranceRef.current = utterance;
+    setIsReading(true);
+    const finish = () => {
+      if (utteranceRef.current === utterance) {
+        utteranceRef.current = null;
+        setIsReading(false);
+      }
+    };
+    utterance.onend = finish;
+    utterance.onerror = finish;
     window.speechSynthesis.speak(utterance);
   }
 
@@ -265,7 +289,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
               <div className="reader-toolbar">
                 <div className="segmented small"><button className={readerMode === 'sentence' ? 'active' : ''} onClick={() => setReaderMode('sentence')}>Sentence</button><button className={readerMode === 'full' ? 'active' : ''} onClick={() => setReaderMode('full')}>Full text</button></div>
                 {readerMode === 'sentence' && <div className="pager"><button onClick={() => setSentenceIndex(Math.max(0, sentenceIndex - 1))}>Previous</button><span>{Math.min(sentenceIndex + 1, sentences.length)} / {sentences.length}</span><button onClick={() => setSentenceIndex(Math.min(sentences.length - 1, sentenceIndex + 1))}>Next</button></div>}
-                <button onClick={() => speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>Read</button>
+                <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
               </div>
               <article className="reader-text">
                 {visibleSentences.map((s, si) => {

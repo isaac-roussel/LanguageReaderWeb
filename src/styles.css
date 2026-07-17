@@ -14,6 +14,7 @@ textarea { resize: vertical; min-height: 110px; }
 label { display: grid; gap: 6px; color: #42526b; font-size: 13px; }
 code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; padding: 1px 4px; }
 .primary { background: #1b4ed8; border-color: #1b4ed8; color: #fff; font-weight: 700; }
+.danger { background: #b42318; border-color: #b42318; color: #fff; font-weight: 700; }
 .ghost { background: transparent; }
 .eyebrow { margin: 0 0 4px; color: #66758e; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .lede { color: #4a5870; line-height: 1.5; }
