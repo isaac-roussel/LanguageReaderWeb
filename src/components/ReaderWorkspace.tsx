@@ -29,6 +29,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [readerMode, setReaderMode] = useState<'full' | 'sentence'>('sentence');
   const [sentenceIndex, setSentenceIndex] = useState(0);
   const [isReading, setIsReading] = useState(false);
+  const [speechRate, setSpeechRate] = useState(0.5);
   const [isAddingText, setIsAddingText] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
@@ -246,6 +247,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = pickSpeechLocale(activeLexicon?.target_language);
+    utterance.rate = speechRate;
     utteranceRef.current = utterance;
     setIsReading(true);
     const finish = () => {
@@ -502,6 +504,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                   <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase()}>Add phrase</button>
                   {selectedReaderPhrase && <button className="ghost" onClick={() => setReaderTokenSelection([])}>Clear</button>}
                 </div>
+                <label className="rate-control">Speed <input type="range" min="0.25" max="1" step="0.05" value={speechRate} onChange={event => setSpeechRate(Number(event.target.value))}/><span>{speechRate.toFixed(2)}x</span></label>
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
                 {selectedReaderPhrase && <div className="phrase-preview">{selectedReaderPhrase}</div>}
               </div>

@@ -51,6 +51,9 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .reader-toolbar { display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; padding: 12px; border-bottom: 1px solid #e3e9f2; }
 .reader-actions { flex-wrap: wrap; }
 .reader-actions button { white-space: nowrap; }
+.rate-control { width: auto; min-width: 190px; display: flex; grid-template-columns: none; flex-direction: row; align-items: center; gap: 8px; color: #53627a; }
+.rate-control input { width: 96px; padding: 0; }
+.rate-control span { min-width: 42px; color: #172033; font-size: 13px; font-variant-numeric: tabular-nums; }
 .phrase-preview { flex-basis: 100%; color: #334155; font-size: 13px; background: #eef4ff; border: 1px solid #c9d8f5; border-radius: 6px; padding: 6px 8px; overflow-wrap: anywhere; }
 .pager { display: flex; align-items: center; gap: 8px; color: #53627a; }
 .reader-text { padding: 28px; font-size: 25px; line-height: 2; overflow-y: auto; overflow-x: hidden; white-space: normal; overflow-wrap: normal; word-break: normal; }
@@ -109,6 +112,8 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
   .sidebar { position: static; }
   .reader-grid, .dictionary-panel, .review-grid, .auth-panel { grid-template-columns: 1fr; }
   .reader-toolbar, .topbar { align-items: stretch; flex-direction: column; }
+  .rate-control { width: 100%; }
+  .rate-control input { flex: 1; width: auto; }
 }
 @media (max-width: 700px) {
   .reader-popup { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: 100%; max-width: none; max-height: 78vh; border-radius: 8px 8px 0 0; }
