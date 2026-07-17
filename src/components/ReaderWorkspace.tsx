@@ -1,5 +1,5 @@
 import { BookOpen, Download, FilePlus, Import, Library, LogOut, Plus, Save, Search, Sparkles } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Lexicon, LexiconEntry, TextDoc } from '../types';
@@ -316,6 +316,15 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     return Boolean(window.getSelection()?.toString().trim());
   }
 
+  function needsTrailingSpace(tokens: string[], index: number) {
+    const token = tokens[index];
+    const next = tokens[index + 1];
+    if (!next) return false;
+    if (/^[,.;:!?%)\]”’]$/u.test(next)) return false;
+    if (/^[(\[{“‘¿¡]$/u.test(token)) return false;
+    return true;
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -379,11 +388,14 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                 {visibleSentences.map((s, si) => {
                   const sentenceOrder = readerMode === 'sentence' ? sentenceIndex + si : si;
                   const phraseTokenClasses = phraseClasses(s.tokens);
-                  return <p key={`${s.raw}-${si}`}>{s.tokens.map((token, ti) => isWordToken(token)
+                  return <p key={`${s.raw}-${si}`}>{s.tokens.map((token, ti) => {
+                    const trailingSpace = needsTrailingSpace(s.tokens, ti) ? ' ' : '';
+                    return isWordToken(token)
                     ? (() => {
                       const readerTokenKey = `${sentenceOrder}:${ti}`;
                       const isManuallySelected = readerTokenSelection.some(item => item.key === readerTokenKey);
-                      return <span
+                      return <Fragment key={`${token}-${ti}`}>
+                        <span
                         key={`${token}-${ti}`}
                         role="button"
                         tabIndex={0}
@@ -403,9 +415,12 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                             openToken(token);
                           }
                         }}
-                      >{token}</span>;
+                        >{token}</span>
+                        {trailingSpace}
+                      </Fragment>;
                     })()
-                    : <span key={`${token}-${ti}`} className="punct">{token}</span>)}</p>;
+                    : <Fragment key={`${token}-${ti}`}><span className="punct">{token}</span>{trailingSpace}</Fragment>;
+                  })}</p>;
                 })}
               </article>
             </>}

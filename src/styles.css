@@ -55,7 +55,7 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .pager { display: flex; align-items: center; gap: 8px; color: #53627a; }
 .reader-text { padding: 28px; font-size: 25px; line-height: 2; overflow-y: auto; overflow-x: hidden; white-space: normal; overflow-wrap: normal; word-break: normal; }
 .reader-text p { margin-top: 0; max-width: 100%; }
-.token { display: inline; padding: 1px 2px; margin-inline-end: 2px; border: 0; background: transparent; border-radius: 4px; font-size: inherit; line-height: inherit; cursor: pointer; user-select: text; white-space: nowrap; }
+.token { display: inline; padding: 1px 2px; border: 0; background: transparent; border-radius: 4px; font-size: inherit; line-height: inherit; cursor: pointer; user-select: text; white-space: nowrap; }
 .token:hover { background: #eef2f7; }
 .token:focus-visible { outline: 2px solid #1b4ed8; outline-offset: 2px; }
 .token-selected { box-shadow: inset 0 -3px 0 #1b4ed8, 0 0 0 2px rgba(27, 78, 216, .18); background: #e8f0ff; }
@@ -75,7 +75,6 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .phrase-status-2 { text-decoration-color: #f59e0b; }
 .phrase-status-3 { text-decoration-color: #10b981; }
 .phrase-status-4 { text-decoration-color: #6b7280; }
-.punct { margin-inline-end: 4px; }
 .entry-editor { padding: 16px; display: grid; gap: 13px; align-content: start; }
 .entry-editor header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .entry-editor h2 { margin: 0; overflow-wrap: anywhere; }
