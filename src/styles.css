@@ -46,7 +46,7 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .stats { display: flex; gap: 8px; flex-wrap: wrap; }
 .stats span { background: #fff; border: 1px solid #dde5ef; border-radius: 999px; padding: 6px 10px; font-size: 13px; }
 .panel { background: #fff; border: 1px solid #dce3ed; border-radius: 8px; box-shadow: 0 8px 24px rgba(26, 37, 56, .06); }
-.reader-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; min-height: 0; }
+.reader-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; min-height: 0; }
 .reader-panel { display: grid; grid-template-rows: auto 1fr; min-height: 620px; }
 .reader-toolbar { display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; padding: 12px; border-bottom: 1px solid #e3e9f2; }
 .reader-actions { flex-wrap: wrap; }
@@ -79,6 +79,10 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .entry-editor header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .entry-editor h2 { margin: 0; overflow-wrap: anywhere; }
 .entry-editor.empty { color: #6a768b; place-items: center; }
+.reader-popup { position: fixed; z-index: 30; width: 380px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: auto; }
+.reader-popup-titlebar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border-bottom: 1px solid #e3e9f2; color: #53627a; font-size: 13px; cursor: move; user-select: none; touch-action: none; }
+.reader-popup-titlebar button { width: 32px; height: 32px; padding: 0; }
+.reader-popup-editor { box-shadow: none; border: 0; border-radius: 0; }
 .status-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .status-actions button { padding: 6px 8px; font-size: 13px; }
 .status-actions button.active { border-color: #1b4ed8; box-shadow: inset 0 0 0 1px #1b4ed8; font-weight: 700; }
@@ -103,4 +107,8 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
   .sidebar { position: static; }
   .reader-grid, .dictionary-panel, .review-grid, .auth-panel { grid-template-columns: 1fr; }
   .reader-toolbar, .topbar { align-items: stretch; flex-direction: column; }
+}
+@media (max-width: 700px) {
+  .reader-popup { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: 100%; max-width: none; max-height: 78vh; border-radius: 8px 8px 0 0; }
+  .reader-popup-titlebar { cursor: default; touch-action: auto; }
 }

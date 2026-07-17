@@ -1,5 +1,6 @@
-import { BookOpen, Download, FilePlus, Import, Library, LogOut, Plus, Save, Search, Sparkles } from 'lucide-react';
+import { BookOpen, Download, FilePlus, Import, Library, LogOut, Plus, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Lexicon, LexiconEntry, TextDoc } from '../types';
@@ -9,7 +10,11 @@ import { isWordToken, parseSentences, pickSpeechLocale, sentenceToText } from '.
 type Props = { session: Session; onSignOut: () => void };
 type View = 'reader' | 'dictionary' | 'review';
 type ReaderTokenSelection = { key: string; text: string; order: number };
+type PopupAnchor = { left: number; top: number; right: number; bottom: number };
+type ReaderPopup = { open: boolean; x: number; y: number; anchor: PopupAnchor | null; manual: boolean };
 const statusLabel = ['Ignored', 'New', 'Seen', 'Familiar', 'Known'];
+const popupWidth = 380;
+const popupHeight = 560;
 
 export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const userId = session.user.id;
@@ -28,8 +33,12 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [draftText, setDraftText] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
   const [readerTokenSelection, setReaderTokenSelection] = useState<ReaderTokenSelection[]>([]);
+  const [readerPopup, setReaderPopup] = useState<ReaderPopup>({ open: false, x: 0, y: 0, anchor: null, manual: false });
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const readerPanelRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
 
   useEffect(() => { void refreshAll(); }, []);
   useEffect(() => { if (activeLexicon) void loadEntries(activeLexicon.id); }, [activeLexicon?.id]);
@@ -38,6 +47,26 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     utteranceRef.current = null;
   }, []);
   useEffect(() => setReaderTokenSelection([]), [activeText?.id, readerMode, sentenceIndex]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setReaderPopup(current => ({ ...current, open: false }));
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!readerPopup.open) return;
+      const target = event.target as Node | null;
+      if (target && popupRef.current?.contains(target)) return;
+      setReaderPopup(current => ({ ...current, open: false }));
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [readerPopup.open]);
+  useEffect(() => {
+    if (view !== 'reader') setReaderPopup(current => ({ ...current, open: false }));
+  }, [view]);
 
   const entryMap = useMemo(() => new Map(entries.map(e => [e.normalized_key, e])), [entries]);
   const sentences = useMemo(() => parseSentences(activeText?.content || ''), [activeText?.content]);
@@ -243,8 +272,10 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
       alert('Select a phrase in the reader first.');
       return;
     }
+    const anchor = anchorFromReaderSelection();
     const saved = await upsertEntry(phrase, { scope: 'phrase' });
     if (!saved) return;
+    openReaderPopup(anchor);
     setReaderTokenSelection([]);
     window.getSelection()?.removeAllRanges();
   }, [entryMap, activeLexicon?.id, userId, selectedReaderPhrase]);
@@ -297,8 +328,55 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     return `${entry ? `token status-${entry.status}` : 'token status-new'}${phraseClass}${isManuallySelected ? ' token-selected' : ''}`;
   }
 
-  function openToken(token: string) {
+  function clampPopupPosition(x: number, y: number) {
+    const margin = 12;
+    const maxX = Math.max(margin, window.innerWidth - popupWidth - margin);
+    const maxY = Math.max(margin, window.innerHeight - popupHeight - margin);
+    return {
+      x: Math.min(Math.max(margin, x), maxX),
+      y: Math.min(Math.max(margin, y), maxY)
+    };
+  }
+
+  function popupPositionForAnchor(anchor: PopupAnchor | null) {
+    if (anchor) return clampPopupPosition(anchor.right + 12, anchor.top);
+    const fallback = readerPanelRef.current?.getBoundingClientRect();
+    if (fallback) return clampPopupPosition(fallback.right - popupWidth - 16, fallback.top + 16);
+    return clampPopupPosition(window.innerWidth - popupWidth - 16, 80);
+  }
+
+  function openReaderPopup(anchor: PopupAnchor | null, forceRecenter = false) {
+    setReaderPopup(current => {
+      const shouldKeepManualPosition = current.open && current.manual && !forceRecenter;
+      const position = shouldKeepManualPosition ? { x: current.x, y: current.y } : popupPositionForAnchor(anchor);
+      return { open: true, x: position.x, y: position.y, anchor: anchor || current.anchor, manual: shouldKeepManualPosition };
+    });
+  }
+
+  function recenterReaderPopup() {
+    setReaderPopup(current => {
+      const position = popupPositionForAnchor(current.anchor);
+      return { ...current, open: true, x: position.x, y: position.y, manual: false };
+    });
+  }
+
+  function anchorFromReaderSelection(): PopupAnchor | null {
+    const firstSelected = readerTokenSelection.slice().sort((a, b) => a.order - b.order)[0];
+    if (firstSelected) {
+      const token = document.querySelector<HTMLElement>(`[data-reader-token-key="${firstSelected.key}"]`);
+      if (token) return token.getBoundingClientRect();
+    }
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const rect = selection.getRangeAt(0).getBoundingClientRect();
+      if (rect.width || rect.height) return rect;
+    }
+    return null;
+  }
+
+  function openToken(token: string, anchor: PopupAnchor | null = null) {
     setReaderTokenSelection([]);
+    openReaderPopup(anchor);
     const entry = entryMap.get(normalizedKey(token));
     setSelected(entry || null);
     if (!entry) void upsertEntry(token, { status: 1 });
@@ -323,6 +401,32 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     if (/^[,.;:!?%)\]”’]$/u.test(next)) return false;
     if (/^[(\[{“‘¿¡]$/u.test(token)) return false;
     return true;
+  }
+
+  function startPopupDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (window.matchMedia('(max-width: 700px)').matches) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('button, input, textarea, select')) return;
+    event.preventDefault();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - readerPopup.x,
+      offsetY: event.clientY - readerPopup.y
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function movePopupDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const position = clampPopupPosition(event.clientX - drag.offsetX, event.clientY - drag.offsetY);
+    setReaderPopup(current => ({ ...current, open: true, x: position.x, y: position.y, manual: true }));
+  }
+
+  function stopPopupDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
   return (
@@ -363,7 +467,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
         </header>
 
         {view === 'reader' && <section className="reader-grid">
-          <div className="panel reader-panel">
+          <div ref={readerPanelRef} className="panel reader-panel">
             {(!activeText || isAddingText) && <div className="new-text">
               <input placeholder="Text title" value={draftTitle} onChange={e => setDraftTitle(e.target.value)} />
               <textarea placeholder="Paste a reading text here..." value={draftText} onChange={e => setDraftText(e.target.value)} />
@@ -400,6 +504,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                         role="button"
                         tabIndex={0}
                         data-reader-token="true"
+                        data-reader-token-key={readerTokenKey}
                         className={tokenClass(token, phraseTokenClasses[ti], isManuallySelected)}
                         onClick={event => {
                           if (event.ctrlKey || event.metaKey) {
@@ -407,12 +512,12 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                             toggleReaderToken(token, readerTokenKey, sentenceOrder * 10000 + ti);
                             return;
                           }
-                          if (!hasActiveSelection()) openToken(token);
+                          if (!hasActiveSelection()) openToken(token, event.currentTarget.getBoundingClientRect());
                         }}
                         onKeyDown={event => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            openToken(token);
+                            openToken(token, event.currentTarget.getBoundingClientRect());
                           }
                         }}
                         >{token}</span>
@@ -425,7 +530,28 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
               </article>
             </>}
           </div>
-          <EntryEditor selected={selected} onChange={updateSelected} onDeepL={openDeepL} />
+          {selected && readerPopup.open && <div
+            ref={popupRef}
+            className="reader-popup panel"
+            style={{ left: readerPopup.x, top: readerPopup.y }}
+          >
+            <div
+              className="reader-popup-titlebar"
+              onPointerDown={startPopupDrag}
+              onPointerMove={movePopupDrag}
+              onPointerUp={stopPopupDrag}
+              onPointerCancel={stopPopupDrag}
+            >
+              <span>Lexicon entry</span>
+              <div className="button-row">
+                <button className="ghost" onClick={recenterReaderPopup} title="Recenter"><RotateCcw size={15}/></button>
+                <button className="ghost" onClick={() => setReaderPopup(current => ({ ...current, open: false }))} title="Close"><X size={15}/></button>
+              </div>
+            </div>
+            <div className="entry-editor reader-popup-editor">
+              <EntryEditorFields selected={selected} onChange={updateSelected} onDeepL={openDeepL} />
+            </div>
+          </div>}
         </section>}
 
         {view === 'dictionary' && <section className="panel dictionary-panel">
