@@ -366,9 +366,9 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
 
   function openReaderPopup(anchor: PopupAnchor | null, forceRecenter = false) {
     setReaderPopup(current => {
-      const shouldKeepManualPosition = current.open && current.manual && !forceRecenter;
-      const position = shouldKeepManualPosition ? { x: current.x, y: current.y } : popupPositionForAnchor(anchor);
-      return { open: true, x: position.x, y: position.y, anchor: anchor || current.anchor, manual: shouldKeepManualPosition };
+      const shouldKeepPosition = current.open && !forceRecenter;
+      const position = shouldKeepPosition ? { x: current.x, y: current.y } : popupPositionForAnchor(anchor);
+      return { open: true, x: position.x, y: position.y, anchor: anchor || current.anchor, manual: current.manual || shouldKeepPosition };
     });
   }
 
