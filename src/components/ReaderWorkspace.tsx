@@ -214,7 +214,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   }
 
   function openDeepL(text: string) {
-    window.open(deepLUrl(text, activeLexicon?.target_language || 'auto', activeLexicon?.native_language || 'en'), '_blank', 'noopener,noreferrer');
+    window.open(deepLUrl(text, activeLexicon?.target_language || 'auto', activeLexicon?.native_language || 'en'), 'language-reader-deepl');
   }
 
   function startNewText() {
