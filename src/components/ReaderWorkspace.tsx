@@ -78,6 +78,24 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     .sort((a, b) => a.order - b.order)
     .map(token => token.text)
     .join(' '), [readerTokenSelection]);
+  const lexiconStatusCounts = useMemo(() => {
+    const counts = Array(statusLabel.length).fill(0);
+    entries.forEach(entry => { counts[entry.status] += 1; });
+    return counts;
+  }, [entries]);
+  const articleStatusCounts = useMemo(() => {
+    const counts = Array(statusLabel.length).fill(0);
+    let unknown = 0;
+    let total = 0;
+    sentences.forEach(sentence => sentence.tokens.forEach(token => {
+      if (!isWordToken(token)) return;
+      total += 1;
+      const entry = entryMap.get(normalizedKey(token));
+      if (entry) counts[entry.status] += 1;
+      else unknown += 1;
+    }));
+    return { counts, unknown, total };
+  }, [sentences, entryMap]);
   const filteredEntries = useMemo(() => {
     const q = query.trim().toLowerCase();
     return entries.filter(e => !q || e.target.toLowerCase().includes(q) || e.native.join(' ').toLowerCase().includes(q) || e.notes.toLowerCase().includes(q));
@@ -464,6 +482,10 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
             <option value="">No lexicon</option>
             {lexicons.map(l => <option key={l.id} value={l.id}>{l.title}</option>)}
           </select>
+          <div className="sidebar-counts">
+            <span><strong>{entries.length}</strong> entries</span>
+            {statusLabel.map((label, status) => <span key={label}><strong>{lexiconStatusCounts[status]}</strong> {label}</span>)}
+          </div>
           <div className="button-row">
             <button onClick={() => importRef.current?.click()}><Import size={15}/> Import</button>
             <button onClick={exportJson} disabled={!activeLexicon}><Download size={15}/> Export</button>
@@ -483,7 +505,6 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
       <main className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">Invite-only web beta</p><h1>{view === 'reader' ? activeText?.title || 'Reader' : view === 'dictionary' ? 'Dictionary' : 'Review'}</h1></div>
-          <div className="stats"><span>{entries.length} entries</span><span>{familiar.length} familiar</span><span>{due.length} due-ish</span></div>
         </header>
 
         {view === 'reader' && <section className="reader-grid">
@@ -509,6 +530,14 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
                 {selectedReaderPhrase && <div className="phrase-preview">{selectedReaderPhrase}</div>}
               </div>
+              <section className="reader-summary">
+                <p>Ctrl-click multiple words, then click Look up to create or open a phrase.</p>
+                <div className="reader-counts">
+                  <span><strong>{articleStatusCounts.total}</strong> words</span>
+                  <span><strong>{articleStatusCounts.unknown}</strong> Unknown</span>
+                  {statusLabel.map((label, status) => <span key={label}><strong>{articleStatusCounts.counts[status]}</strong> {label}</span>)}
+                </div>
+              </section>
               <article className="reader-text">
                 {visibleSentences.map((s, si) => {
                   const sentenceOrder = readerMode === 'sentence' ? sentenceIndex + si : si;

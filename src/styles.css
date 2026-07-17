@@ -38,6 +38,9 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .side-section { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid #2b374d; }
 .side-section header { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #aebbd0; }
 .side-section header button { width: 32px; height: 32px; padding: 0; }
+.sidebar-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; color: #d9e3f0; font-size: 12px; }
+.sidebar-counts span { background: #18243a; border: 1px solid #2d3a52; border-radius: 6px; padding: 6px 7px; }
+.sidebar-counts strong { color: #fff; font-variant-numeric: tabular-nums; }
 .button-row { display: flex; gap: 8px; }
 .signout { margin-top: auto; color: #d9e3f0; border-color: #38465d; }
 .workspace { padding: 20px; display: grid; grid-template-rows: auto 1fr; gap: 18px; }
@@ -55,6 +58,11 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .rate-control input { width: 96px; padding: 0; }
 .rate-control span { min-width: 42px; color: #172033; font-size: 13px; font-variant-numeric: tabular-nums; }
 .phrase-preview { flex-basis: 100%; color: #334155; font-size: 13px; background: #eef4ff; border: 1px solid #c9d8f5; border-radius: 6px; padding: 6px 8px; overflow-wrap: anywhere; }
+.reader-summary { display: grid; gap: 9px; padding: 10px 12px; border-bottom: 1px solid #e3e9f2; background: #fbfcfe; }
+.reader-summary p { margin: 0; color: #4d5c72; font-size: 13px; }
+.reader-counts { display: flex; flex-wrap: wrap; gap: 7px; }
+.reader-counts span { background: #fff; border: 1px solid #dbe4ef; border-radius: 999px; color: #53627a; font-size: 12px; padding: 5px 8px; }
+.reader-counts strong { color: #172033; font-variant-numeric: tabular-nums; }
 .pager { display: flex; align-items: center; gap: 8px; color: #53627a; }
 .reader-text { padding: 28px; font-size: 25px; line-height: 2; overflow-y: auto; overflow-x: hidden; white-space: normal; overflow-wrap: normal; word-break: normal; }
 .reader-text p { margin-top: 0; max-width: 100%; }
