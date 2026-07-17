@@ -8,6 +8,7 @@ import { isWordToken, parseSentences, pickSpeechLocale, sentenceToText } from '.
 
 type Props = { session: Session; onSignOut: () => void };
 type View = 'reader' | 'dictionary' | 'review';
+type ReaderTokenSelection = { key: string; text: string; order: number };
 const statusLabel = ['Ignored', 'New', 'Seen', 'Familiar', 'Known'];
 
 export default function ReaderWorkspace({ session, onSignOut }: Props) {
@@ -26,6 +27,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [isAddingText, setIsAddingText] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
+  const [readerTokenSelection, setReaderTokenSelection] = useState<ReaderTokenSelection[]>([]);
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -35,10 +37,16 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     window.speechSynthesis.cancel();
     utteranceRef.current = null;
   }, []);
+  useEffect(() => setReaderTokenSelection([]), [activeText?.id, readerMode, sentenceIndex]);
 
   const entryMap = useMemo(() => new Map(entries.map(e => [e.normalized_key, e])), [entries]);
   const sentences = useMemo(() => parseSentences(activeText?.content || ''), [activeText?.content]);
   const visibleSentences = readerMode === 'sentence' ? sentences.slice(sentenceIndex, sentenceIndex + 1) : sentences;
+  const selectedReaderPhrase = useMemo(() => readerTokenSelection
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map(token => token.text)
+    .join(' '), [readerTokenSelection]);
   const filteredEntries = useMemo(() => {
     const q = query.trim().toLowerCase();
     return entries.filter(e => !q || e.target.toLowerCase().includes(q) || e.native.join(' ').toLowerCase().includes(q) || e.notes.toLowerCase().includes(q));
@@ -217,6 +225,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   }
 
   function selectedReaderText() {
+    if (selectedReaderPhrase) return selectedReaderPhrase;
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return '';
     const selectedRange = selection.getRangeAt(0);
@@ -237,8 +246,9 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     if (openTranslator) openDeepL(phrase);
     const saved = await upsertEntry(phrase, { scope: 'phrase' });
     if (!saved) return;
+    setReaderTokenSelection([]);
     window.getSelection()?.removeAllRanges();
-  }, [entryMap, activeLexicon?.id, userId, activeLexicon?.target_language, activeLexicon?.native_language]);
+  }, [entryMap, activeLexicon?.id, userId, activeLexicon?.target_language, activeLexicon?.native_language, selectedReaderPhrase]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -283,15 +293,24 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     return classes;
   }
 
-  function tokenClass(token: string, phraseClass = '') {
+  function tokenClass(token: string, phraseClass = '', isManuallySelected = false) {
     const entry = entryMap.get(normalizedKey(token));
-    return `${entry ? `token status-${entry.status}` : 'token status-new'}${phraseClass}`;
+    return `${entry ? `token status-${entry.status}` : 'token status-new'}${phraseClass}${isManuallySelected ? ' token-selected' : ''}`;
   }
 
   function openToken(token: string) {
+    setReaderTokenSelection([]);
     const entry = entryMap.get(normalizedKey(token));
     setSelected(entry || null);
     if (!entry) void upsertEntry(token, { status: 1 });
+  }
+
+  function toggleReaderToken(token: string, key: string, order: number) {
+    window.getSelection()?.removeAllRanges();
+    setReaderTokenSelection(current => {
+      if (current.some(item => item.key === key)) return current.filter(item => item.key !== key);
+      return [...current, { key, text: token, order }];
+    });
   }
 
   function hasActiveSelection() {
@@ -352,27 +371,41 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                 <div className="button-row reader-actions">
                   <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase(true)}><Search size={16}/> Look up</button>
                   <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase(false)}>Add phrase</button>
+                  {selectedReaderPhrase && <button className="ghost" onClick={() => setReaderTokenSelection([])}>Clear</button>}
                 </div>
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
+                {selectedReaderPhrase && <div className="phrase-preview">{selectedReaderPhrase}</div>}
               </div>
               <article className="reader-text">
                 {visibleSentences.map((s, si) => {
+                  const sentenceOrder = readerMode === 'sentence' ? sentenceIndex + si : si;
                   const phraseTokenClasses = phraseClasses(s.tokens);
                   return <p key={`${s.raw}-${si}`}>{s.tokens.map((token, ti) => isWordToken(token)
-                    ? <span
+                    ? (() => {
+                      const readerTokenKey = `${sentenceOrder}:${ti}`;
+                      const isManuallySelected = readerTokenSelection.some(item => item.key === readerTokenKey);
+                      return <span
                         key={`${token}-${ti}`}
                         role="button"
                         tabIndex={0}
                         data-reader-token="true"
-                        className={tokenClass(token, phraseTokenClasses[ti])}
-                        onClick={() => { if (!hasActiveSelection()) openToken(token); }}
+                        className={tokenClass(token, phraseTokenClasses[ti], isManuallySelected)}
+                        onClick={event => {
+                          if (event.ctrlKey || event.metaKey) {
+                            event.preventDefault();
+                            toggleReaderToken(token, readerTokenKey, sentenceOrder * 10000 + ti);
+                            return;
+                          }
+                          if (!hasActiveSelection()) openToken(token);
+                        }}
                         onKeyDown={event => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
                             openToken(token);
                           }
                         }}
-                      >{token}</span>
+                      >{token}</span>;
+                    })()
                     : <span key={`${token}-${ti}`} className="punct">{token}</span>)}</p>;
                 })}
               </article>
