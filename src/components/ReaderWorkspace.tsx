@@ -56,6 +56,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
       if (!readerPopup.open) return;
       const target = event.target as Node | null;
       if (target && popupRef.current?.contains(target)) return;
+      if (target instanceof HTMLElement && target.closest('.reader-panel')) return;
       setReaderPopup(current => ({ ...current, open: false }));
     };
     window.addEventListener('keydown', onKeyDown);
