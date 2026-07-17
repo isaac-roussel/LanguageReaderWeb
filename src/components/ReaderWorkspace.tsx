@@ -1,5 +1,5 @@
 import { BookOpen, Download, FilePlus, Import, Library, LogOut, Plus, Save, Search, Sparkles } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Lexicon, LexiconEntry, TextDoc } from '../types';
@@ -23,6 +23,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [readerMode, setReaderMode] = useState<'full' | 'sentence'>('sentence');
   const [sentenceIndex, setSentenceIndex] = useState(0);
   const [isReading, setIsReading] = useState(false);
+  const [isAddingText, setIsAddingText] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
   const importRef = useRef<HTMLInputElement>(null);
@@ -101,6 +102,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     setDraftText('');
     setDraftTitle('');
     setSentenceIndex(0);
+    setIsAddingText(false);
   }
 
   async function upsertEntry(target: string, patch: Partial<LexiconEntry>) {
@@ -207,6 +209,44 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     window.open(deepLUrl(text, activeLexicon?.target_language || 'auto', activeLexicon?.native_language || 'en'), '_blank', 'noopener,noreferrer');
   }
 
+  function startNewText() {
+    setIsAddingText(true);
+    setDraftTitle('');
+    setDraftText('');
+    setSelected(null);
+  }
+
+  function selectedReaderText() {
+    const raw = window.getSelection()?.toString() || '';
+    return raw.replace(/\s+/g, ' ').trim();
+  }
+
+  const addSelectedPhrase = useCallback(async (openTranslator = false) => {
+    const phrase = selectedReaderText();
+    if (!phrase) {
+      alert('Select a phrase in the reader first.');
+      return;
+    }
+    if (openTranslator) openDeepL(phrase);
+    const saved = await upsertEntry(phrase, { scope: 'phrase' });
+    if (!saved) return;
+    window.getSelection()?.removeAllRanges();
+  }, [entryMap, activeLexicon?.id, userId, activeLexicon?.target_language, activeLexicon?.native_language]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+      if (event.altKey && event.key.toLowerCase() === 't') {
+        event.preventDefault();
+        void addSelectedPhrase(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [addSelectedPhrase]);
+
   const phraseEntries = useMemo(() => entries
     .filter(e => e.scope === 'phrase')
     .map(e => ({
@@ -263,7 +303,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
           <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => e.target.files?.[0] && void importJson(e.target.files[0])}/>
         </section>
         <section className="side-section">
-          <header><span>Texts</span></header>
+          <header><span>Texts</span><button onClick={startNewText} title="New story"><Plus size={16}/></button></header>
           <select value={activeText?.id || ''} onChange={e => { setActiveText(texts.find(t => t.id === e.target.value) || null); setSentenceIndex(0); }}>
             <option value="">No text</option>
             {texts.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
@@ -280,15 +320,19 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
 
         {view === 'reader' && <section className="reader-grid">
           <div className="panel reader-panel">
-            {!activeText && <div className="new-text">
+            {(!activeText || isAddingText) && <div className="new-text">
               <input placeholder="Text title" value={draftTitle} onChange={e => setDraftTitle(e.target.value)} />
               <textarea placeholder="Paste a reading text here..." value={draftText} onChange={e => setDraftText(e.target.value)} />
-              <button className="primary" onClick={saveText}><FilePlus size={16}/> Save text</button>
+              <div className="button-row">
+                <button className="primary" onClick={saveText}><FilePlus size={16}/> Save story</button>
+                {activeText && <button onClick={() => setIsAddingText(false)}>Cancel</button>}
+              </div>
             </div>}
-            {activeText && <>
+            {activeText && !isAddingText && <>
               <div className="reader-toolbar">
                 <div className="segmented small"><button className={readerMode === 'sentence' ? 'active' : ''} onClick={() => setReaderMode('sentence')}>Sentence</button><button className={readerMode === 'full' ? 'active' : ''} onClick={() => setReaderMode('full')}>Full text</button></div>
                 {readerMode === 'sentence' && <div className="pager"><button onClick={() => setSentenceIndex(Math.max(0, sentenceIndex - 1))}>Previous</button><span>{Math.min(sentenceIndex + 1, sentences.length)} / {sentences.length}</span><button onClick={() => setSentenceIndex(Math.min(sentences.length - 1, sentenceIndex + 1))}>Next</button></div>}
+                <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase(false)}>Add phrase</button>
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
               </div>
               <article className="reader-text">
@@ -327,6 +371,7 @@ function EntryEditor({ selected, onChange, onDeepL }: { selected: LexiconEntry |
   return <aside className="panel entry-editor">
     <header><h2>{selected.target}</h2><button onClick={() => onDeepL(selected.target)}>DeepL</button></header>
     <label>Status<select value={selected.status} onChange={e => onChange({ status: clampStatus(e.target.value) })}>{statusLabel.map((label, i) => <option key={label} value={i}>{i} - {label}</option>)}</select></label>
+    <div className="status-actions">{statusLabel.map((label, status) => <button key={label} className={selected.status === status ? 'active' : ''} onClick={() => onChange({ status: clampStatus(status) })}>{label}</button>)}</div>
     <label>Definitions<textarea value={nativeText} onChange={e => setNativeText(e.target.value)} onBlur={() => onChange({ native: splitLines(nativeText) })}/></label>
     <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => onChange({ notes })}/></label>
     <button className="primary" onClick={() => onChange({ native: splitLines(nativeText), notes })}><Save size={16}/> Save</button>
