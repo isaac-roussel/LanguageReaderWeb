@@ -217,8 +217,15 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   }
 
   function selectedReaderText() {
-    const raw = window.getSelection()?.toString() || '';
-    return raw.replace(/\s+/g, ' ').trim();
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return '';
+    const selectedRange = selection.getRangeAt(0);
+    const selectedTokens = Array.from(document.querySelectorAll<HTMLElement>('.reader-text [data-reader-token="true"]'))
+      .filter(token => selectedRange.intersectsNode(token))
+      .map(token => token.textContent?.trim() || '')
+      .filter(Boolean);
+    if (selectedTokens.length > 0) return selectedTokens.join(' ');
+    return selection.toString().replace(/\s+/g, ' ').trim();
   }
 
   const addSelectedPhrase = useCallback(async (openTranslator = false) => {
@@ -342,7 +349,10 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
               <div className="reader-toolbar">
                 <div className="segmented small"><button className={readerMode === 'sentence' ? 'active' : ''} onClick={() => setReaderMode('sentence')}>Sentence</button><button className={readerMode === 'full' ? 'active' : ''} onClick={() => setReaderMode('full')}>Full text</button></div>
                 {readerMode === 'sentence' && <div className="pager"><button onClick={() => setSentenceIndex(Math.max(0, sentenceIndex - 1))}>Previous</button><span>{Math.min(sentenceIndex + 1, sentences.length)} / {sentences.length}</span><button onClick={() => setSentenceIndex(Math.min(sentences.length - 1, sentenceIndex + 1))}>Next</button></div>}
-                <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase(false)}>Add phrase</button>
+                <div className="button-row reader-actions">
+                  <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase(true)}><Search size={16}/> Look up</button>
+                  <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase(false)}>Add phrase</button>
+                </div>
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
               </div>
               <article className="reader-text">
@@ -353,6 +363,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                         key={`${token}-${ti}`}
                         role="button"
                         tabIndex={0}
+                        data-reader-token="true"
                         className={tokenClass(token, phraseTokenClasses[ti])}
                         onClick={() => { if (!hasActiveSelection()) openToken(token); }}
                         onKeyDown={event => {
