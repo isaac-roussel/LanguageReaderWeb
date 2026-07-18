@@ -172,7 +172,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     setIsAddingText(false);
   }
 
-  async function upsertEntry(target: string, patch: Partial<LexiconEntry>) {
+  async function upsertEntry(target: string, patch: Partial<LexiconEntry>, forceSelect = false) {
     if (!supabase || !activeLexicon) return null;
     const key = normalizedKey(target);
     const existing = entryMap.get(key);
@@ -194,7 +194,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     if (error) { alert(error.message); return null; }
     const saved = data as LexiconEntry;
     setEntries(prev => existing ? prev.map(e => e.id === saved.id ? saved : e) : [...prev, saved].sort((a, b) => a.target.localeCompare(b.target)));
-    setSelected(saved);
+    setSelected(current => forceSelect || current?.normalized_key === key ? saved : current);
     return saved;
   }
 
@@ -346,7 +346,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
       return;
     }
     const anchor = anchorFromReaderSelection();
-    const saved = await upsertEntry(phrase, { scope: 'phrase' });
+    const saved = await upsertEntry(phrase, { scope: 'phrase' }, true);
     if (!saved) return;
     openReaderPopup(anchor);
     setReaderTokenSelection([]);
@@ -453,7 +453,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     openReaderPopup(anchor);
     const entry = entryMap.get(normalizedKey(token));
     setSelected(entry || null);
-    if (!entry) void upsertEntry(token, { status: 1 });
+    if (!entry) void upsertEntry(token, { status: 1 }, true);
   }
 
   function toggleReaderToken(token: string, key: string, order: number) {
@@ -678,14 +678,18 @@ function EntryEditor({ selected, onChange, onDeepL, onDelete }: { selected: Lexi
 function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected: LexiconEntry; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void; onDelete: () => void }) {
   const [nativeText, setNativeText] = useState('');
   const [notes, setNotes] = useState('');
+  const [needsSeenPrompt, setNeedsSeenPrompt] = useState(false);
   const definitionRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { setNativeText((selected.native || []).join('\n')); setNotes(selected.notes || ''); }, [selected.id, selected.native, selected.notes]);
+  useEffect(() => setNeedsSeenPrompt(false), [selected.id]);
   const saveWithDrafts = (patch: Partial<LexiconEntry> = {}, promptToMarkSeen = false) => {
     const nextNative = patch.native ?? splitLines(nativeText);
     const definitionChanged = nextNative.join('\n') !== (selected.native || []).join('\n');
     const remainsNew = (patch.status ?? selected.status) === 1;
-    const shouldMarkSeen = promptToMarkSeen && definitionChanged && nextNative.length > 0 && remainsNew
+    const shouldOfferSeen = (needsSeenPrompt || definitionChanged) && nextNative.length > 0 && remainsNew;
+    const shouldMarkSeen = promptToMarkSeen && shouldOfferSeen
       && window.confirm(`A definition was added to "${selected.target}". Move it to Seen?`);
+    if (!remainsNew || promptToMarkSeen) setNeedsSeenPrompt(false);
     onChange({ native: nextNative, notes, ...patch, ...(shouldMarkSeen ? { status: 2 } : {}) });
   };
   const isLeavingEntry = (event: { currentTarget: HTMLElement; relatedTarget: EventTarget | null }) => {
@@ -701,7 +705,7 @@ function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected
       const end = textarea?.selectionEnd ?? nativeText.length;
       const nextText = `${nativeText.slice(0, start)}${pasted}${nativeText.slice(end)}`;
       setNativeText(nextText);
-      saveWithDrafts({ native: splitLines(nextText) });
+      setNeedsSeenPrompt(selected.status === 1 && splitLines(nextText).join('\n') !== (selected.native || []).join('\n'));
       requestAnimationFrame(() => {
         textarea?.focus();
         textarea?.setSelectionRange(start + pasted.length, start + pasted.length);
@@ -714,7 +718,7 @@ function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected
     <header><h2>{selected.target}</h2><button onClick={() => onDeepL(selected.target)}>DeepL</button></header>
     <label>Status<select value={selected.status} onChange={e => saveWithDrafts({ status: clampStatus(e.target.value) })}>{statusLabel.map((label, i) => <option key={label} value={i}>{i} - {label}</option>)}</select></label>
     <div className="status-actions">{statusLabel.map((label, status) => <button key={label} className={selected.status === status ? 'active' : ''} onClick={() => saveWithDrafts({ status: clampStatus(status) })}>{label}</button>)}</div>
-    <label>Definitions<span className="field-label-actions"><button type="button" onClick={() => void pasteDefinition()}><ClipboardPaste size={14}/> Paste</button></span><textarea ref={definitionRef} value={nativeText} onChange={e => setNativeText(e.target.value)} onBlur={e => { if (isLeavingEntry(e)) saveWithDrafts({}, true); }}/></label>
+    <label>Definitions<span className="field-label-actions"><button type="button" onClick={() => void pasteDefinition()}><ClipboardPaste size={14}/> Paste</button></span><textarea ref={definitionRef} value={nativeText} onChange={e => { setNativeText(e.target.value); setNeedsSeenPrompt(selected.status === 1 && splitLines(e.target.value).join('\n') !== (selected.native || []).join('\n')); }} onBlur={e => { if (isLeavingEntry(e)) saveWithDrafts({}, true); }}/></label>
     <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={e => { if (isLeavingEntry(e)) saveWithDrafts({}, true); }}/></label>
     <div className="entry-editor-actions">
       <button className="primary" onClick={() => saveWithDrafts({}, true)}><Save size={16}/> Save</button>
