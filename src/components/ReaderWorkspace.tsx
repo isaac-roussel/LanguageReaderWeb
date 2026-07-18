@@ -680,7 +680,18 @@ function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected
   const [notes, setNotes] = useState('');
   const definitionRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { setNativeText((selected.native || []).join('\n')); setNotes(selected.notes || ''); }, [selected.id, selected.native, selected.notes]);
-  const saveWithDrafts = (patch: Partial<LexiconEntry> = {}) => onChange({ native: splitLines(nativeText), notes, ...patch });
+  const saveWithDrafts = (patch: Partial<LexiconEntry> = {}, promptToMarkSeen = false) => {
+    const nextNative = patch.native ?? splitLines(nativeText);
+    const definitionChanged = nextNative.join('\n') !== (selected.native || []).join('\n');
+    const remainsNew = (patch.status ?? selected.status) === 1;
+    const shouldMarkSeen = promptToMarkSeen && definitionChanged && nextNative.length > 0 && remainsNew
+      && window.confirm(`A definition was added to "${selected.target}". Move it to Seen?`);
+    onChange({ native: nextNative, notes, ...patch, ...(shouldMarkSeen ? { status: 2 } : {}) });
+  };
+  const isLeavingEntry = (event: { currentTarget: HTMLElement; relatedTarget: EventTarget | null }) => {
+    const editor = event.currentTarget.closest('.entry-editor');
+    return !(event.relatedTarget instanceof Node && editor?.contains(event.relatedTarget));
+  };
   async function pasteDefinition() {
     try {
       const pasted = await navigator.clipboard.readText();
@@ -690,7 +701,7 @@ function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected
       const end = textarea?.selectionEnd ?? nativeText.length;
       const nextText = `${nativeText.slice(0, start)}${pasted}${nativeText.slice(end)}`;
       setNativeText(nextText);
-      onChange({ native: splitLines(nextText), notes });
+      saveWithDrafts({ native: splitLines(nextText) });
       requestAnimationFrame(() => {
         textarea?.focus();
         textarea?.setSelectionRange(start + pasted.length, start + pasted.length);
@@ -703,10 +714,10 @@ function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected
     <header><h2>{selected.target}</h2><button onClick={() => onDeepL(selected.target)}>DeepL</button></header>
     <label>Status<select value={selected.status} onChange={e => saveWithDrafts({ status: clampStatus(e.target.value) })}>{statusLabel.map((label, i) => <option key={label} value={i}>{i} - {label}</option>)}</select></label>
     <div className="status-actions">{statusLabel.map((label, status) => <button key={label} className={selected.status === status ? 'active' : ''} onClick={() => saveWithDrafts({ status: clampStatus(status) })}>{label}</button>)}</div>
-    <label>Definitions<span className="field-label-actions"><button type="button" onClick={() => void pasteDefinition()}><ClipboardPaste size={14}/> Paste</button></span><textarea ref={definitionRef} value={nativeText} onChange={e => setNativeText(e.target.value)} onBlur={() => saveWithDrafts()}/></label>
-    <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => onChange({ notes })}/></label>
+    <label>Definitions<span className="field-label-actions"><button type="button" onClick={() => void pasteDefinition()}><ClipboardPaste size={14}/> Paste</button></span><textarea ref={definitionRef} value={nativeText} onChange={e => setNativeText(e.target.value)} onBlur={e => { if (isLeavingEntry(e)) saveWithDrafts({}, true); }}/></label>
+    <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={e => { if (isLeavingEntry(e)) saveWithDrafts({}, true); }}/></label>
     <div className="entry-editor-actions">
-      <button className="primary" onClick={() => saveWithDrafts()}><Save size={16}/> Save</button>
+      <button className="primary" onClick={() => saveWithDrafts({}, true)}><Save size={16}/> Save</button>
       <button className="danger" onClick={onDelete}>Delete</button>
     </div>
   </>;
