@@ -1,4 +1,4 @@
-import { BookOpen, Download, FilePlus, Import, Library, LogOut, Plus, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react';
+import { BookOpen, Bookmark, ClipboardPaste, Download, FilePlus, Import, Library, LogOut, Plus, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -12,6 +12,8 @@ type View = 'reader' | 'dictionary' | 'review';
 type ReaderTokenSelection = { key: string; text: string; order: number };
 type PopupAnchor = { left: number; top: number; right: number; bottom: number };
 type ReaderPopup = { open: boolean; x: number; y: number; anchor: PopupAnchor | null; manual: boolean };
+type TextBookmark = { sentenceIndex: number; tokenIndex: number };
+type TextBookmarks = Record<string, TextBookmark>;
 const statusLabel = ['Ignored', 'New', 'Seen', 'Familiar', 'Known'];
 const popupWidth = 380;
 const popupHeight = 560;
@@ -35,6 +37,9 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [draftTitle, setDraftTitle] = useState('');
   const [readerTokenSelection, setReaderTokenSelection] = useState<ReaderTokenSelection[]>([]);
   const [readerPopup, setReaderPopup] = useState<ReaderPopup>({ open: false, x: 0, y: 0, anchor: null, manual: false });
+  const [popupTokenPosition, setPopupTokenPosition] = useState<TextBookmark | null>(null);
+  const [textBookmarks, setTextBookmarks] = useState<TextBookmarks>({});
+  const [userSettings, setUserSettings] = useState<Record<string, unknown>>({});
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -105,9 +110,10 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
 
   async function refreshAll() {
     if (!supabase) return;
-    const [{ data: lx }, { data: tx }] = await Promise.all([
+    const [{ data: lx }, { data: tx }, { data: savedSettings }] = await Promise.all([
       supabase.from('lexicons').select('*').order('updated_at', { ascending: false }),
-      supabase.from('texts').select('*').order('updated_at', { ascending: false })
+      supabase.from('texts').select('*').order('updated_at', { ascending: false }),
+      supabase.from('user_settings').select('settings').eq('owner_id', userId).maybeSingle()
     ]);
     const nextLexicons = (lx || []) as Lexicon[];
     const nextTexts = (tx || []) as TextDoc[];
@@ -115,6 +121,10 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     setTexts(nextTexts);
     setActiveLexicon(current => current || nextLexicons[0] || null);
     setActiveText(current => current || nextTexts[0] || null);
+    const settings = (savedSettings?.settings && typeof savedSettings.settings === 'object' ? savedSettings.settings : {}) as Record<string, unknown>;
+    setUserSettings(settings);
+    const bookmarks = settings.text_bookmarks;
+    setTextBookmarks(bookmarks && typeof bookmarks === 'object' ? bookmarks as TextBookmarks : {});
   }
 
   async function loadEntries(lexiconId: string) {
@@ -191,6 +201,31 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   async function updateSelected(patch: Partial<LexiconEntry>) {
     if (!selected) return;
     await upsertEntry(selected.target, patch);
+  }
+
+  async function saveTextBookmark(bookmark: TextBookmark | null) {
+    if (!supabase || !activeText) return;
+    const nextBookmarks = { ...textBookmarks };
+    if (bookmark) nextBookmarks[activeText.id] = bookmark;
+    else delete nextBookmarks[activeText.id];
+    const nextSettings = { ...userSettings, text_bookmarks: nextBookmarks };
+    const { error } = await supabase.from('user_settings').upsert({
+      owner_id: userId,
+      settings: nextSettings,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'owner_id' });
+    if (error) return alert(error.message);
+    setTextBookmarks(nextBookmarks);
+    setUserSettings(nextSettings);
+  }
+
+  function goToBookmark() {
+    if (!activeText) return;
+    const bookmark = textBookmarks[activeText.id];
+    if (!bookmark) return;
+    setReaderMode('sentence');
+    setSentenceIndex(bookmark.sentenceIndex);
+    setReaderPopup(current => ({ ...current, open: false }));
   }
 
   async function deleteSelectedEntry() {
@@ -412,8 +447,9 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     return null;
   }
 
-  function openToken(token: string, anchor: PopupAnchor | null = null) {
+  function openToken(token: string, anchor: PopupAnchor | null = null, position: TextBookmark | null = null) {
     setReaderTokenSelection([]);
+    setPopupTokenPosition(position);
     openReaderPopup(anchor);
     const entry = entryMap.get(normalizedKey(token));
     setSelected(entry || null);
@@ -525,6 +561,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                   <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase()}><Search size={16}/> Look up</button>
                   <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase()}>Add phrase</button>
                   {selectedReaderPhrase && <button className="ghost" onClick={() => setReaderTokenSelection([])}>Clear</button>}
+                  <button disabled={!activeText || !textBookmarks[activeText.id]} onClick={goToBookmark}><Bookmark size={16}/> Go to bookmark</button>
                 </div>
                 <label className="rate-control">Speed <input type="range" min="0.25" max="1" step="0.05" value={speechRate} onChange={event => setSpeechRate(Number(event.target.value))}/><span>{speechRate.toFixed(2)}x</span></label>
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
@@ -555,19 +592,19 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                         tabIndex={0}
                         data-reader-token="true"
                         data-reader-token-key={readerTokenKey}
-                        className={tokenClass(token, phraseTokenClasses[ti], isManuallySelected)}
+                        className={`${tokenClass(token, phraseTokenClasses[ti], isManuallySelected)}${activeText && textBookmarks[activeText.id]?.sentenceIndex === sentenceOrder && textBookmarks[activeText.id]?.tokenIndex === ti ? ' token-bookmarked' : ''}`}
                         onClick={event => {
                           if (event.ctrlKey || event.metaKey) {
                             event.preventDefault();
                             toggleReaderToken(token, readerTokenKey, sentenceOrder * 10000 + ti);
                             return;
                           }
-                          if (!hasActiveSelection()) openToken(token, event.currentTarget.getBoundingClientRect());
+                          if (!hasActiveSelection()) openToken(token, event.currentTarget.getBoundingClientRect(), { sentenceIndex: sentenceOrder, tokenIndex: ti });
                         }}
                         onKeyDown={event => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            openToken(token, event.currentTarget.getBoundingClientRect());
+                            openToken(token, event.currentTarget.getBoundingClientRect(), { sentenceIndex: sentenceOrder, tokenIndex: ti });
                           }
                         }}
                         >{token}</span>
@@ -594,6 +631,18 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
             >
               <span>Lexicon entry</span>
               <div className="button-row">
+                <button
+                  className={activeText && popupTokenPosition && textBookmarks[activeText.id]?.sentenceIndex === popupTokenPosition.sentenceIndex && textBookmarks[activeText.id]?.tokenIndex === popupTokenPosition.tokenIndex ? 'bookmark-active' : 'ghost'}
+                  disabled={!activeText || !popupTokenPosition}
+                  onClick={() => {
+                    if (!activeText || !popupTokenPosition) return;
+                    const current = textBookmarks[activeText.id];
+                    const isCurrent = current?.sentenceIndex === popupTokenPosition.sentenceIndex && current?.tokenIndex === popupTokenPosition.tokenIndex;
+                    void saveTextBookmark(isCurrent ? null : popupTokenPosition);
+                  }}
+                  title="Bookmark this spot"
+                  aria-label="Bookmark this spot"
+                ><Bookmark size={15}/></button>
                 <button className="ghost" onClick={recenterReaderPopup} title="Recenter"><RotateCcw size={15}/></button>
                 <button className="ghost" onClick={() => setReaderPopup(current => ({ ...current, open: false }))} title="Close"><X size={15}/></button>
               </div>
@@ -629,15 +678,35 @@ function EntryEditor({ selected, onChange, onDeepL, onDelete }: { selected: Lexi
 function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected: LexiconEntry; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void; onDelete: () => void }) {
   const [nativeText, setNativeText] = useState('');
   const [notes, setNotes] = useState('');
+  const definitionRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { setNativeText((selected.native || []).join('\n')); setNotes(selected.notes || ''); }, [selected.id, selected.native, selected.notes]);
+  const saveWithDrafts = (patch: Partial<LexiconEntry> = {}) => onChange({ native: splitLines(nativeText), notes, ...patch });
+  async function pasteDefinition() {
+    try {
+      const pasted = await navigator.clipboard.readText();
+      if (!pasted) return;
+      const textarea = definitionRef.current;
+      const start = textarea?.selectionStart ?? nativeText.length;
+      const end = textarea?.selectionEnd ?? nativeText.length;
+      const nextText = `${nativeText.slice(0, start)}${pasted}${nativeText.slice(end)}`;
+      setNativeText(nextText);
+      onChange({ native: splitLines(nextText), notes });
+      requestAnimationFrame(() => {
+        textarea?.focus();
+        textarea?.setSelectionRange(start + pasted.length, start + pasted.length);
+      });
+    } catch {
+      alert('Clipboard access was blocked. Allow clipboard access for this site, then try Paste again.');
+    }
+  }
   return <>
     <header><h2>{selected.target}</h2><button onClick={() => onDeepL(selected.target)}>DeepL</button></header>
-    <label>Status<select value={selected.status} onChange={e => onChange({ status: clampStatus(e.target.value) })}>{statusLabel.map((label, i) => <option key={label} value={i}>{i} - {label}</option>)}</select></label>
-    <div className="status-actions">{statusLabel.map((label, status) => <button key={label} className={selected.status === status ? 'active' : ''} onClick={() => onChange({ status: clampStatus(status) })}>{label}</button>)}</div>
-    <label>Definitions<textarea value={nativeText} onChange={e => setNativeText(e.target.value)} onBlur={() => onChange({ native: splitLines(nativeText) })}/></label>
+    <label>Status<select value={selected.status} onChange={e => saveWithDrafts({ status: clampStatus(e.target.value) })}>{statusLabel.map((label, i) => <option key={label} value={i}>{i} - {label}</option>)}</select></label>
+    <div className="status-actions">{statusLabel.map((label, status) => <button key={label} className={selected.status === status ? 'active' : ''} onClick={() => saveWithDrafts({ status: clampStatus(status) })}>{label}</button>)}</div>
+    <label>Definitions<span className="field-label-actions"><button type="button" onClick={() => void pasteDefinition()}><ClipboardPaste size={14}/> Paste</button></span><textarea ref={definitionRef} value={nativeText} onChange={e => setNativeText(e.target.value)} onBlur={() => saveWithDrafts()}/></label>
     <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => onChange({ notes })}/></label>
     <div className="entry-editor-actions">
-      <button className="primary" onClick={() => onChange({ native: splitLines(nativeText), notes })}><Save size={16}/> Save</button>
+      <button className="primary" onClick={() => saveWithDrafts()}><Save size={16}/> Save</button>
       <button className="danger" onClick={onDelete}>Delete</button>
     </div>
   </>;
