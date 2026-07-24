@@ -90,6 +90,8 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .entry-editor { padding: 16px; display: grid; gap: 13px; align-content: start; }
 .entry-editor header { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .entry-editor h2 { margin: 0; overflow-wrap: anywhere; }
+.translator-controls { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+.translator-controls select { width: auto; min-width: 145px; }
 .entry-editor.empty { color: #6a768b; place-items: center; }
 .entry-editor-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
 .entry-editor-actions button { flex: 1; }

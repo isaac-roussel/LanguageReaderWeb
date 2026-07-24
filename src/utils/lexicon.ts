@@ -39,6 +39,16 @@ export function deepLUrl(text: string, source = 'auto', target = 'en'): string {
   return `https://www.deepl.com/translator#${encodeURIComponent(src)}/${encodeURIComponent(tgt)}/${encodeURIComponent(text.trim())}`;
 }
 
+export function googleTranslateUrl(text: string, source = 'auto', target = 'en'): string {
+  const params = new URLSearchParams({
+    sl: source || 'auto',
+    tl: target || 'en',
+    text: text.trim(),
+    op: 'translate'
+  });
+  return `https://translate.google.com/?${params.toString()}`;
+}
+
 export function desktopEntriesFromJson(raw: string) {
   const parsed = JSON.parse(raw.replace(/^\uFEFF/, '')) as DesktopLexicon | Array<Record<string, unknown>>;
   const obj: DesktopLexicon = Array.isArray(parsed) ? { meta: null, entries: parsed } : parsed;

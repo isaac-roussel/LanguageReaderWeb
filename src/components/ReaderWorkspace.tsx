@@ -4,7 +4,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Lexicon, LexiconEntry, TextDoc } from '../types';
-import { clampStatus, deepLUrl, desktopEntriesFromJson, normalizedKey, splitLines, toDesktopLexicon } from '../utils/lexicon';
+import { clampStatus, deepLUrl, desktopEntriesFromJson, googleTranslateUrl, normalizedKey, splitLines, toDesktopLexicon } from '../utils/lexicon';
 import { isWordToken, parseSentences, pickSpeechLocale, sentenceToText } from '../utils/text';
 
 type Props = { session: Session; onSignOut: () => void };
@@ -14,6 +14,7 @@ type PopupAnchor = { left: number; top: number; right: number; bottom: number };
 type ReaderPopup = { open: boolean; x: number; y: number; anchor: PopupAnchor | null; manual: boolean };
 type TextBookmark = { sentenceIndex: number; tokenIndex: number };
 type TextBookmarks = Record<string, TextBookmark>;
+type TranslationProvider = 'google' | 'deepl';
 const statusLabel = ['Ignored', 'New', 'Seen', 'Familiar', 'Known'];
 const popupWidth = 380;
 const popupHeight = 560;
@@ -40,6 +41,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [popupTokenPosition, setPopupTokenPosition] = useState<TextBookmark | null>(null);
   const [textBookmarks, setTextBookmarks] = useState<TextBookmarks>({});
   const [userSettings, setUserSettings] = useState<Record<string, unknown>>({});
+  const [isSavingTranslationProvider, setIsSavingTranslationProvider] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -107,6 +109,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   }, [entries, query]);
   const familiar = entries.filter(e => e.status === 3);
   const due = entries.filter(e => e.status > 0 && e.status < 4);
+  const translationProvider: TranslationProvider = userSettings.translation_provider === 'deepl' ? 'deepl' : 'google';
 
   async function refreshAll() {
     if (!supabase) return;
@@ -219,6 +222,20 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     setUserSettings(nextSettings);
   }
 
+  async function saveTranslationProvider(provider: TranslationProvider) {
+    if (!supabase || provider === translationProvider) return;
+    const nextSettings = { ...userSettings, translation_provider: provider };
+    setIsSavingTranslationProvider(true);
+    const { error } = await supabase.from('user_settings').upsert({
+      owner_id: userId,
+      settings: nextSettings,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'owner_id' });
+    setIsSavingTranslationProvider(false);
+    if (error) return alert(error.message);
+    setUserSettings(nextSettings);
+  }
+
   function goToBookmark() {
     if (!activeText) return;
     const bookmark = textBookmarks[activeText.id];
@@ -315,8 +332,13 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     window.speechSynthesis.speak(utterance);
   }
 
-  function openDeepL(text: string) {
-    window.open(deepLUrl(text, activeLexicon?.target_language || 'auto', activeLexicon?.native_language || 'en'), 'language-reader-deepl');
+  function openTranslation(text: string) {
+    const source = activeLexicon?.target_language || 'auto';
+    const target = activeLexicon?.native_language || 'en';
+    const url = translationProvider === 'deepl'
+      ? deepLUrl(text, source, target)
+      : googleTranslateUrl(text, source, target);
+    window.open(url, `language-reader-${translationProvider}`);
   }
 
   function startNewText() {
@@ -648,7 +670,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
               </div>
             </div>
             <div className="entry-editor reader-popup-editor">
-              <EntryEditorFields selected={selected} onChange={updateSelected} onDeepL={openDeepL} onDelete={deleteSelectedEntry} />
+              <EntryEditorFields selected={selected} onChange={updateSelected} onTranslate={openTranslation} translationProvider={translationProvider} onTranslationProviderChange={saveTranslationProvider} isSavingTranslationProvider={isSavingTranslationProvider} onDelete={deleteSelectedEntry} />
             </div>
           </div>}
         </section>}
@@ -656,7 +678,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
         {view === 'dictionary' && <section className="panel dictionary-panel">
           <label className="search"><Search size={16}/><input placeholder="Search target, definition, or notes" value={query} onChange={e => setQuery(e.target.value)} /></label>
           <div className="entry-list">{filteredEntries.map(e => <button key={e.id} onClick={() => setSelected(e)} className={selected?.id === e.id ? 'active' : ''}><strong>{e.target}</strong><span>{e.native.join(' • ') || 'No definition'}</span><em>{statusLabel[e.status]}</em></button>)}</div>
-          <EntryEditor selected={selected} onChange={updateSelected} onDeepL={openDeepL} onDelete={deleteSelectedEntry} />
+          <EntryEditor selected={selected} onChange={updateSelected} onTranslate={openTranslation} translationProvider={translationProvider} onTranslationProviderChange={saveTranslationProvider} isSavingTranslationProvider={isSavingTranslationProvider} onDelete={deleteSelectedEntry} />
         </section>}
 
         {view === 'review' && <section className="review-grid">
@@ -668,14 +690,24 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   );
 }
 
-function EntryEditor({ selected, onChange, onDeepL, onDelete }: { selected: LexiconEntry | null; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void; onDelete: () => void }) {
+type EntryEditorProps = {
+  selected: LexiconEntry | null;
+  onChange: (patch: Partial<LexiconEntry>) => void;
+  onTranslate: (text: string) => void;
+  translationProvider: TranslationProvider;
+  onTranslationProviderChange: (provider: TranslationProvider) => void;
+  isSavingTranslationProvider: boolean;
+  onDelete: () => void;
+};
+
+function EntryEditor({ selected, onChange, onTranslate, translationProvider, onTranslationProviderChange, isSavingTranslationProvider, onDelete }: EntryEditorProps) {
   if (!selected) return <aside className="panel entry-editor empty"><p>Select a word to edit its lexicon entry.</p></aside>;
   return <aside className="panel entry-editor">
-    <EntryEditorFields selected={selected} onChange={onChange} onDeepL={onDeepL} onDelete={onDelete} />
+    <EntryEditorFields selected={selected} onChange={onChange} onTranslate={onTranslate} translationProvider={translationProvider} onTranslationProviderChange={onTranslationProviderChange} isSavingTranslationProvider={isSavingTranslationProvider} onDelete={onDelete} />
   </aside>;
 }
 
-function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected: LexiconEntry; onChange: (patch: Partial<LexiconEntry>) => void; onDeepL: (text: string) => void; onDelete: () => void }) {
+function EntryEditorFields({ selected, onChange, onTranslate, translationProvider, onTranslationProviderChange, isSavingTranslationProvider, onDelete }: Omit<EntryEditorProps, 'selected'> & { selected: LexiconEntry }) {
   const [nativeText, setNativeText] = useState('');
   const [notes, setNotes] = useState('');
   const [needsSeenPrompt, setNeedsSeenPrompt] = useState(false);
@@ -715,7 +747,21 @@ function EntryEditorFields({ selected, onChange, onDeepL, onDelete }: { selected
     }
   }
   return <>
-    <header><h2>{selected.target}</h2><button onClick={() => onDeepL(selected.target)}>DeepL</button></header>
+    <header>
+      <h2>{selected.target}</h2>
+      <div className="translator-controls">
+        <select
+          aria-label="Translation service"
+          value={translationProvider}
+          disabled={isSavingTranslationProvider}
+          onChange={e => void onTranslationProviderChange(e.target.value as TranslationProvider)}
+        >
+          <option value="google">Google Translate</option>
+          <option value="deepl">DeepL</option>
+        </select>
+        <button onClick={() => onTranslate(selected.target)}>Translate</button>
+      </div>
+    </header>
     <label>Status<select value={selected.status} onChange={e => saveWithDrafts({ status: clampStatus(e.target.value) })}>{statusLabel.map((label, i) => <option key={label} value={i}>{i} - {label}</option>)}</select></label>
     <div className="status-actions">{statusLabel.map((label, status) => <button key={label} className={selected.status === status ? 'active' : ''} onClick={() => saveWithDrafts({ status: clampStatus(status) })}>{label}</button>)}</div>
     <label>Definitions<span className="field-label-actions"><button type="button" onClick={() => void pasteDefinition()}><ClipboardPaste size={14}/> Paste</button></span><textarea ref={definitionRef} value={nativeText} onChange={e => { setNativeText(e.target.value); setNeedsSeenPrompt(selected.status === 1 && splitLines(e.target.value).join('\n') !== (selected.native || []).join('\n')); }} onBlur={e => { if (isLeavingEntry(e)) saveWithDrafts({}, true); }}/></label>
