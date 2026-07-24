@@ -26,7 +26,7 @@ The browser app will show a setup screen until the Supabase environment variable
 
 ## Translation policy
 
-V1 does not call a paid translation API. The reader opens Google Translate or DeepL lookup URLs for selected words or phrases, with source and target languages prefilled when possible. Each user's preferred service is saved in their account settings, with Google Translate as the default.
+V1 does not call a paid translation API. The reader opens DeepL or Google Translate lookup URLs for selected words or phrases, with source and target languages prefilled when possible. Each user's preferred service is saved in their account settings, with DeepL as the default.
 
 ## Desktop compatibility
 

@@ -109,7 +109,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   }, [entries, query]);
   const familiar = entries.filter(e => e.status === 3);
   const due = entries.filter(e => e.status > 0 && e.status < 4);
-  const translationProvider: TranslationProvider = userSettings.translation_provider === 'deepl' ? 'deepl' : 'google';
+  const translationProvider: TranslationProvider = userSettings.translation_provider === 'google' ? 'google' : 'deepl';
 
   async function refreshAll() {
     if (!supabase) return;
