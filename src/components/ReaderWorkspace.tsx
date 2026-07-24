@@ -5,6 +5,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Lexicon, LexiconEntry, TextDoc } from '../types';
 import { clampStatus, deepLUrl, desktopEntriesFromJson, googleTranslateUrl, normalizedKey, splitLines, toDesktopLexicon } from '../utils/lexicon';
+import { checkTranslation, collectAutoFillCandidates, testLibreTranslate, translateWithLibreTranslate } from '../utils/localTranslation';
 import { isWordToken, parseSentences, pickSpeechLocale, sentenceToText } from '../utils/text';
 
 type Props = { session: Session; onSignOut: () => void };
@@ -15,9 +16,32 @@ type ReaderPopup = { open: boolean; x: number; y: number; anchor: PopupAnchor | 
 type TextBookmark = { sentenceIndex: number; tokenIndex: number };
 type TextBookmarks = Record<string, TextBookmark>;
 type TranslationProvider = 'google' | 'deepl';
+type LocalConnection = 'idle' | 'checking' | 'connected' | 'offline';
+type AutoFillFailure = { word: string; reason: string };
+type AutoFillState = {
+  running: boolean;
+  total: number;
+  processed: number;
+  saved: number;
+  skipped: number;
+  current: string;
+  message: string;
+  failures: AutoFillFailure[];
+};
 const statusLabel = ['Ignored', 'New', 'Seen', 'Familiar', 'Known'];
 const popupWidth = 380;
 const popupHeight = 560;
+const libreTranslateOwnerEmail = String(import.meta.env.VITE_LIBRETRANSLATE_OWNER_EMAIL || '').trim().toLowerCase();
+const initialAutoFillState: AutoFillState = {
+  running: false,
+  total: 0,
+  processed: 0,
+  saved: 0,
+  skipped: 0,
+  current: '',
+  message: '',
+  failures: []
+};
 
 export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const userId = session.user.id;
@@ -42,8 +66,12 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [textBookmarks, setTextBookmarks] = useState<TextBookmarks>({});
   const [userSettings, setUserSettings] = useState<Record<string, unknown>>({});
   const [isSavingTranslationProvider, setIsSavingTranslationProvider] = useState(false);
+  const [localConnection, setLocalConnection] = useState<LocalConnection>('idle');
+  const [localConnectionMessage, setLocalConnectionMessage] = useState('Not tested');
+  const [autoFillState, setAutoFillState] = useState<AutoFillState>(initialAutoFillState);
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const autoFillAbortRef = useRef<AbortController | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const readerPanelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
@@ -76,6 +104,14 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   useEffect(() => {
     if (view !== 'reader') setReaderPopup(current => ({ ...current, open: false }));
   }, [view]);
+  useEffect(() => {
+    autoFillAbortRef.current?.abort();
+    autoFillAbortRef.current = null;
+    setAutoFillState(current => current.running
+      ? { ...current, running: false, current: '', message: 'Stopped because the active text or lexicon changed.' }
+      : current);
+  }, [activeText?.id, activeLexicon?.id]);
+  useEffect(() => () => autoFillAbortRef.current?.abort(), []);
 
   const entryMap = useMemo(() => new Map(entries.map(e => [e.normalized_key, e])), [entries]);
   const sentences = useMemo(() => parseSentences(activeText?.content || ''), [activeText?.content]);
@@ -110,6 +146,8 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const familiar = entries.filter(e => e.status === 3);
   const due = entries.filter(e => e.status > 0 && e.status < 4);
   const translationProvider: TranslationProvider = userSettings.translation_provider === 'google' ? 'google' : 'deepl';
+  const isLocalTranslationOwner = Boolean(libreTranslateOwnerEmail)
+    && session.user.email?.trim().toLowerCase() === libreTranslateOwnerEmail;
 
   async function refreshAll() {
     if (!supabase) return;
@@ -234,6 +272,161 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     setIsSavingTranslationProvider(false);
     if (error) return alert(error.message);
     setUserSettings(nextSettings);
+  }
+
+  function localTranslationError(error: unknown) {
+    if (error instanceof Error && error.message.includes('timed out')) return error.message;
+    return 'Could not reach local LibreTranslate. Start run-libretranslate.ps1, allow local network access if your browser asks, then try again.';
+  }
+
+  async function checkLocalTranslation() {
+    setLocalConnection('checking');
+    setLocalConnectionMessage('Checking...');
+    try {
+      await testLibreTranslate();
+      setLocalConnection('connected');
+      setLocalConnectionMessage('Connected to LibreTranslate');
+      return true;
+    } catch (error) {
+      setLocalConnection('offline');
+      setLocalConnectionMessage(localTranslationError(error));
+      return false;
+    }
+  }
+
+  async function saveAutoTranslation(lexiconId: string, word: string, translation: string, signal: AbortSignal) {
+    if (!supabase || signal.aborted) return null;
+    const key = normalizedKey(word);
+    const { data: current, error: readError } = await supabase
+      .from('lexicon_entries')
+      .select('*')
+      .eq('lexicon_id', lexiconId)
+      .eq('normalized_key', key)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (signal.aborted) return null;
+
+    const existing = current as LexiconEntry | null;
+    if (existing && (existing.status !== 1 || existing.native.some(definition => definition.trim()))) return null;
+
+    const query = existing
+      ? supabase.from('lexicon_entries')
+        .update({ native: [translation], status: 1 })
+        .eq('id', existing.id)
+        .eq('owner_id', userId)
+        .select('*')
+        .single()
+      : supabase.from('lexicon_entries')
+        .insert({
+          lexicon_id: lexiconId,
+          owner_id: userId,
+          target: word,
+          normalized_key: key,
+          native: [translation],
+          status: 1,
+          scope: 'word',
+          notes: '',
+          review: {}
+        })
+        .select('*')
+        .single();
+    const { data, error } = await query;
+    if (error) throw error;
+    const saved = data as LexiconEntry;
+    setEntries(previous => {
+      const found = previous.some(entry => entry.id === saved.id);
+      return found
+        ? previous.map(entry => entry.id === saved.id ? saved : entry)
+        : [...previous, saved].sort((a, b) => a.target.localeCompare(b.target));
+    });
+    setSelected(currentSelection => currentSelection?.normalized_key === key ? saved : currentSelection);
+    return saved;
+  }
+
+  function stopAutoFill() {
+    autoFillAbortRef.current?.abort();
+  }
+
+  async function fillNewDefinitions() {
+    if (!activeLexicon || !activeText || autoFillState.running) return;
+    const candidates = collectAutoFillCandidates(sentences, entryMap);
+    if (candidates.length === 0) {
+      setAutoFillState({ ...initialAutoFillState, message: 'No New words without definitions were found in this article.' });
+      return;
+    }
+
+    const controller = new AbortController();
+    autoFillAbortRef.current = controller;
+    setAutoFillState({ ...initialAutoFillState, running: true, total: candidates.length });
+
+    try {
+      await testLibreTranslate(controller.signal);
+      setLocalConnection('connected');
+      setLocalConnectionMessage('Connected to LibreTranslate');
+    } catch (error) {
+      autoFillAbortRef.current = null;
+      setLocalConnection('offline');
+      setLocalConnectionMessage(localTranslationError(error));
+      setAutoFillState({
+        ...initialAutoFillState,
+        message: controller.signal.aborted ? 'Stopped.' : localTranslationError(error)
+      });
+      return;
+    }
+
+    let processed = 0;
+    let saved = 0;
+    let skipped = 0;
+    const failures: AutoFillFailure[] = [];
+    const source = activeLexicon.target_language || 'auto';
+    const target = activeLexicon.native_language || 'en';
+    const lexiconId = activeLexicon.id;
+
+    for (const candidate of candidates) {
+      if (controller.signal.aborted) break;
+      setAutoFillState(current => ({ ...current, current: candidate.word }));
+      try {
+        const output = await translateWithLibreTranslate(candidate.word, source, target, controller.signal);
+        const checked = checkTranslation(candidate.word, output);
+        if (!checked.ok) {
+          failures.push({ word: candidate.word, reason: checked.reason });
+        } else {
+          const result = await saveAutoTranslation(lexiconId, candidate.word, checked.translation, controller.signal);
+          if (result) saved += 1;
+          else skipped += 1;
+        }
+      } catch (error) {
+        if (controller.signal.aborted) break;
+        failures.push({
+          word: candidate.word,
+          reason: error instanceof Error ? error.message : 'Translation failed'
+        });
+      }
+      processed += 1;
+      setAutoFillState(current => ({
+        ...current,
+        processed,
+        saved,
+        skipped,
+        failures: [...failures]
+      }));
+    }
+
+    const stopped = controller.signal.aborted;
+    autoFillAbortRef.current = null;
+    const failed = failures.length;
+    setAutoFillState({
+      running: false,
+      total: candidates.length,
+      processed,
+      saved,
+      skipped,
+      current: '',
+      failures,
+      message: stopped
+        ? `Stopped after ${processed} of ${candidates.length}. Saved ${saved}.`
+        : `Finished. Saved ${saved}, failed ${failed}${skipped ? `, skipped ${skipped} changed entr${skipped === 1 ? 'y' : 'ies'}` : ''}.`
+    });
   }
 
   function goToBookmark() {
@@ -589,6 +782,29 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
             {texts.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
           </select>
         </section>
+        {isLocalTranslationOwner && <section className="side-section local-translation">
+          <header><span>Local translation</span><Sparkles size={15}/></header>
+          <p className={`local-status ${localConnection}`}>{localConnectionMessage}</p>
+          <button
+            onClick={() => void checkLocalTranslation()}
+            disabled={localConnection === 'checking' || autoFillState.running}
+          >{localConnection === 'checking' ? 'Checking...' : 'Test connection'}</button>
+          <button
+            className="primary"
+            onClick={() => void fillNewDefinitions()}
+            disabled={!activeText || !activeLexicon || autoFillState.running}
+          >Fill new definitions</button>
+          {autoFillState.running && <>
+            <progress max={autoFillState.total || 1} value={autoFillState.processed}/>
+            <p className="local-progress">{autoFillState.processed} / {autoFillState.total}{autoFillState.current ? ` · ${autoFillState.current}` : ''}</p>
+            <button className="danger" onClick={stopAutoFill}>Stop</button>
+          </>}
+          {!autoFillState.running && autoFillState.message && <p className="local-result">{autoFillState.message}</p>}
+          {!autoFillState.running && autoFillState.failures.length > 0 && <details>
+            <summary>{autoFillState.failures.length} failed word{autoFillState.failures.length === 1 ? '' : 's'}</summary>
+            <ul>{autoFillState.failures.map(failure => <li key={failure.word}><strong>{failure.word}</strong>: {failure.reason}</li>)}</ul>
+          </details>}
+        </section>}
         <button className="ghost signout" onClick={onSignOut}><LogOut size={16}/> Sign out</button>
       </aside>
 

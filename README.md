@@ -19,6 +19,7 @@ The Codex Sites app is already deployed. To activate the live app:
 3. In Codex Sites, set these production environment variables:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_LIBRETRANSLATE_OWNER_EMAIL` (optional; enables the local translation panel for that signed-in email)
 4. Redeploy the saved Sites version so the environment variables are applied.
 5. Add invite rows to the `invites` table for beta users.
 
@@ -27,6 +28,8 @@ The browser app will show a setup screen until the Supabase environment variable
 ## Translation policy
 
 V1 does not call a paid translation API. The reader opens DeepL or Google Translate lookup URLs for selected words or phrases, with source and target languages prefilled when possible. Each user's preferred service is saved in their account settings, with DeepL as the default.
+
+The optional owner-only local translation panel calls LibreTranslate at `http://127.0.0.1:5000` directly from the browser. Start the existing Electron repository's `run-libretranslate.ps1` launcher before testing the connection or filling definitions. Text sent to this local service does not pass through the hosted app.
 
 ## Desktop compatibility
 
