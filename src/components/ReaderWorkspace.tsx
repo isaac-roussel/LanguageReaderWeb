@@ -490,6 +490,38 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     return Boolean(window.getSelection()?.toString().trim());
   }
 
+  function selectedReaderSentenceIndex() {
+    const manuallySelected = readerTokenSelection
+      .slice()
+      .sort((a, b) => a.order - b.order)[0];
+    if (manuallySelected) {
+      const index = Number(manuallySelected.key.split(':')[0]);
+      if (Number.isInteger(index)) return index;
+    }
+
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const selectedToken = Array.from(document.querySelectorAll<HTMLElement>('.reader-text [data-reader-token-key]'))
+        .find(token => range.intersectsNode(token));
+      const index = Number(selectedToken?.dataset.readerTokenKey?.split(':')[0]);
+      if (Number.isInteger(index)) return index;
+    }
+
+    if (readerPopup.open && popupTokenPosition) return popupTokenPosition.sentenceIndex;
+    return null;
+  }
+
+  function changeReaderMode(mode: 'full' | 'sentence') {
+    if (mode === 'sentence' && readerMode === 'full') {
+      const selectedIndex = selectedReaderSentenceIndex();
+      if (selectedIndex !== null) {
+        setSentenceIndex(Math.min(Math.max(0, selectedIndex), Math.max(0, sentences.length - 1)));
+      }
+    }
+    setReaderMode(mode);
+  }
+
   function needsTrailingSpace(tokens: string[], index: number) {
     const token = tokens[index];
     const next = tokens[index + 1];
@@ -577,7 +609,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
             </div>}
             {activeText && !isAddingText && <>
               <div className="reader-toolbar">
-                <div className="segmented small"><button className={readerMode === 'sentence' ? 'active' : ''} onClick={() => setReaderMode('sentence')}>Sentence</button><button className={readerMode === 'full' ? 'active' : ''} onClick={() => setReaderMode('full')}>Full text</button></div>
+                <div className="segmented small"><button className={readerMode === 'sentence' ? 'active' : ''} onClick={() => changeReaderMode('sentence')}>Sentence</button><button className={readerMode === 'full' ? 'active' : ''} onClick={() => changeReaderMode('full')}>Full text</button></div>
                 {readerMode === 'sentence' && <div className="pager"><button onClick={() => setSentenceIndex(Math.max(0, sentenceIndex - 1))}>Previous</button><span>{Math.min(sentenceIndex + 1, sentences.length)} / {sentences.length}</span><button onClick={() => setSentenceIndex(Math.min(sentences.length - 1, sentenceIndex + 1))}>Next</button></div>}
                 <div className="button-row reader-actions">
                   <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase()}><Search size={16}/> Look up</button>
