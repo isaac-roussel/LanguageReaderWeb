@@ -71,6 +71,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [autoFillState, setAutoFillState] = useState<AutoFillState>(initialAutoFillState);
   const [notesMigrationMessage, setNotesMigrationMessage] = useState('');
   const [isMigratingNotes, setIsMigratingNotes] = useState(false);
+  const [isDeletingEmptyNew, setIsDeletingEmptyNew] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const autoFillAbortRef = useRef<AbortController | null>(null);
@@ -565,6 +566,37 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     setNotesMigrationMessage(`Moved ${updated.length} notes; moved ${promoted.length} defined New entries to Seen; ${emptyNewCount} empty New entries remain.`);
   }
 
+  async function deleteEmptyNewEntries() {
+    if (!supabase || !activeLexicon || isDeletingEmptyNew) return;
+    const candidates = entries.filter(entry =>
+      entry.status === 1
+      && !entry.native.some(definition => definition.trim())
+      && !entry.notes.trim()
+    );
+    if (!candidates.length) {
+      setNotesMigrationMessage('No empty New entries remain.');
+      return;
+    }
+    if (!window.confirm(`Permanently delete ${candidates.length} New entries with no definition or notes?`)) return;
+
+    setIsDeletingEmptyNew(true);
+    const { error } = await supabase
+      .from('lexicon_entries')
+      .delete()
+      .eq('owner_id', userId)
+      .eq('lexicon_id', activeLexicon.id)
+      .in('id', candidates.map(entry => entry.id));
+    if (error) {
+      setIsDeletingEmptyNew(false);
+      setNotesMigrationMessage(`Delete failed: ${error.message}`);
+      return;
+    }
+
+    await loadEntries(activeLexicon.id);
+    setIsDeletingEmptyNew(false);
+    setNotesMigrationMessage(`Deleted ${candidates.length} empty New entries. Zero New entries remain.`);
+  }
+
   function stopSpeech() {
     window.speechSynthesis.cancel();
     utteranceRef.current = null;
@@ -994,6 +1026,9 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
           <div className="button-row">
             <button disabled={isMigratingNotes} onClick={() => void moveNotesToBlankDefinitions()}>
               {isMigratingNotes ? 'Moving notes...' : 'Move notes to blank definitions'}
+            </button>
+            <button disabled={isDeletingEmptyNew} onClick={() => void deleteEmptyNewEntries()}>
+              {isDeletingEmptyNew ? 'Deleting...' : 'Delete empty New entries'}
             </button>
             {notesMigrationMessage && <span>{notesMigrationMessage}</span>}
           </div>
