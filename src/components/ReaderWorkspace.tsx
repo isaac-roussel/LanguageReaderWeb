@@ -69,6 +69,8 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [localConnection, setLocalConnection] = useState<LocalConnection>('idle');
   const [localConnectionMessage, setLocalConnectionMessage] = useState('Not tested');
   const [autoFillState, setAutoFillState] = useState<AutoFillState>(initialAutoFillState);
+  const [notesMigrationMessage, setNotesMigrationMessage] = useState('');
+  const [isMigratingNotes, setIsMigratingNotes] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const autoFillAbortRef = useRef<AbortController | null>(null);
@@ -499,6 +501,70 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     URL.revokeObjectURL(url);
   }
 
+  async function moveNotesToBlankDefinitions() {
+    if (!supabase || !activeLexicon || isMigratingNotes) return;
+    const candidates = entries.filter(entry =>
+      !entry.native.some(definition => definition.trim())
+      && entry.notes.trim()
+    );
+    if (!candidates.length) {
+      setNotesMigrationMessage('No entries need this correction.');
+      return;
+    }
+    if (!window.confirm(`Move notes into blank definitions for ${candidates.length} entries? Existing definitions will not be changed.`)) return;
+
+    setIsMigratingNotes(true);
+    setNotesMigrationMessage(`Updating 0 of ${candidates.length} entries...`);
+    const updated = candidates.map(entry => ({
+      ...entry,
+      native: splitLines(entry.notes),
+      notes: ''
+    }));
+
+    for (let i = 0; i < updated.length; i += 500) {
+      const chunk = updated.slice(i, i + 500);
+      const { error } = await supabase
+        .from('lexicon_entries')
+        .upsert(chunk, { onConflict: 'id' });
+      if (error) {
+        setIsMigratingNotes(false);
+        setNotesMigrationMessage(`Stopped after ${i} entries: ${error.message}`);
+        return;
+      }
+      setNotesMigrationMessage(`Updating ${Math.min(i + chunk.length, updated.length)} of ${updated.length} entries...`);
+    }
+
+    const migratedIds = new Set(updated.map(entry => entry.id));
+    const entriesAfterMigration = entries.map(entry => migratedIds.has(entry.id)
+      ? { ...entry, native: splitLines(entry.notes), notes: '' }
+      : entry);
+    const newWithDefinitions = entriesAfterMigration.filter(entry =>
+      entry.status === 1
+      && entry.native.some(definition => definition.trim())
+    );
+    const promoted = newWithDefinitions.map(entry => ({ ...entry, status: 2 as const }));
+
+    for (let i = 0; i < promoted.length; i += 500) {
+      const chunk = promoted.slice(i, i + 500);
+      const { error } = await supabase
+        .from('lexicon_entries')
+        .upsert(chunk, { onConflict: 'id' });
+      if (error) {
+        setIsMigratingNotes(false);
+        setNotesMigrationMessage(`Moved ${updated.length} notes, but stopped while moving New entries to Seen: ${error.message}`);
+        return;
+      }
+    }
+
+    const emptyNewCount = entriesAfterMigration.filter(entry =>
+      entry.status === 1
+      && !entry.native.some(definition => definition.trim())
+    ).length;
+    await loadEntries(activeLexicon.id);
+    setIsMigratingNotes(false);
+    setNotesMigrationMessage(`Moved ${updated.length} notes; moved ${promoted.length} defined New entries to Seen; ${emptyNewCount} empty New entries remain.`);
+  }
+
   function stopSpeech() {
     window.speechSynthesis.cancel();
     utteranceRef.current = null;
@@ -925,6 +991,12 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
 
         {view === 'dictionary' && <section className="panel dictionary-panel">
           <label className="search"><Search size={16}/><input placeholder="Search target, definition, or notes" value={query} onChange={e => setQuery(e.target.value)} /></label>
+          <div className="button-row">
+            <button disabled={isMigratingNotes} onClick={() => void moveNotesToBlankDefinitions()}>
+              {isMigratingNotes ? 'Moving notes...' : 'Move notes to blank definitions'}
+            </button>
+            {notesMigrationMessage && <span>{notesMigrationMessage}</span>}
+          </div>
           <div className="entry-list">{filteredEntries.map(e => <button key={e.id} onClick={() => setSelected(e)} className={selected?.id === e.id ? 'active' : ''}><strong>{e.target}</strong><span>{e.native.join(' • ') || 'No definition'}</span><em>{statusLabel[e.status]}</em></button>)}</div>
           <EntryEditor selected={selected} onChange={updateSelected} onTranslate={openTranslation} translationProvider={translationProvider} onTranslationProviderChange={saveTranslationProvider} isSavingTranslationProvider={isSavingTranslationProvider} onDelete={deleteSelectedEntry} />
         </section>}
