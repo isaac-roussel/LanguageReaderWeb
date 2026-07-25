@@ -972,6 +972,20 @@ function EntryEditorFields({ selected, onChange, onTranslate, translationProvide
     if (!remainsNew || promptToMarkSeen) setNeedsSeenPrompt(false);
     onChange({ native: nextNative, notes, ...patch, ...(shouldMarkSeen ? { status: 2 } : {}) });
   };
+  useEffect(() => {
+    const onStatusShortcut = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || !/^[0-4]$/.test(event.key)) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (
+        target.matches('input, textarea, select')
+        || target.isContentEditable
+      )) return;
+      event.preventDefault();
+      saveWithDrafts({ status: clampStatus(event.key) });
+    };
+    window.addEventListener('keydown', onStatusShortcut);
+    return () => window.removeEventListener('keydown', onStatusShortcut);
+  }, [selected.id, selected.native, selected.status, nativeText, notes, needsSeenPrompt, onChange]);
   const isLeavingEntry = (event: { currentTarget: HTMLElement; relatedTarget: EventTarget | null }) => {
     const editor = event.currentTarget.closest('.entry-editor');
     return !(event.relatedTarget instanceof Node && editor?.contains(event.relatedTarget));
@@ -1012,6 +1026,7 @@ function EntryEditorFields({ selected, onChange, onTranslate, translationProvide
     </header>
     <label>Status<select value={selected.status} onChange={e => saveWithDrafts({ status: clampStatus(e.target.value) })}>{statusLabel.map((label, i) => <option key={label} value={i}>{i} - {label}</option>)}</select></label>
     <div className="status-actions">{statusLabel.map((label, status) => <button key={label} className={selected.status === status ? 'active' : ''} onClick={() => saveWithDrafts({ status: clampStatus(status) })}>{label}</button>)}</div>
+    <small>Keyboard shortcut: press 0–4 to change this entry’s status.</small>
     <label>Definitions<span className="field-label-actions"><button type="button" onClick={() => void pasteDefinition()}><ClipboardPaste size={14}/> Paste</button></span><textarea ref={definitionRef} value={nativeText} onChange={e => { setNativeText(e.target.value); setNeedsSeenPrompt(selected.status === 1 && splitLines(e.target.value).join('\n') !== (selected.native || []).join('\n')); }} onBlur={e => { if (isLeavingEntry(e)) saveWithDrafts({}, true); }}/></label>
     <label>Notes<textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={e => { if (isLeavingEntry(e)) saveWithDrafts({}, true); }}/></label>
     <div className="entry-editor-actions">
