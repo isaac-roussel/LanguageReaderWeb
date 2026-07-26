@@ -158,11 +158,17 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     ]);
     const nextLexicons = (lx || []) as Lexicon[];
     const nextTexts = (tx || []) as TextDoc[];
+    const settings = (savedSettings?.settings && typeof savedSettings.settings === 'object' ? savedSettings.settings : {}) as Record<string, unknown>;
+    const savedLexiconId = typeof settings.active_lexicon_id === 'string' ? settings.active_lexicon_id : '';
     setLexicons(nextLexicons);
     setTexts(nextTexts);
-    setActiveLexicon(current => current || nextLexicons[0] || null);
+    setActiveLexicon(current =>
+      nextLexicons.find(lexicon => lexicon.id === current?.id)
+      || nextLexicons.find(lexicon => lexicon.id === savedLexiconId)
+      || nextLexicons[0]
+      || null
+    );
     setActiveText(current => current || nextTexts[0] || null);
-    const settings = (savedSettings?.settings && typeof savedSettings.settings === 'object' ? savedSettings.settings : {}) as Record<string, unknown>;
     setUserSettings(settings);
     const bookmarks = settings.text_bookmarks;
     setTextBookmarks(bookmarks && typeof bookmarks === 'object' ? bookmarks as TextBookmarks : {});
@@ -197,7 +203,20 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     const { data, error } = await supabase.from('lexicons').insert({ owner_id: userId, title, target_language: 'auto', native_language: 'en' }).select('*').single();
     if (error) return alert(error.message);
     setLexicons([data as Lexicon, ...lexicons]);
-    setActiveLexicon(data as Lexicon);
+    await selectActiveLexicon(data as Lexicon);
+  }
+
+  async function selectActiveLexicon(lexicon: Lexicon | null) {
+    setActiveLexicon(lexicon);
+    if (!supabase) return;
+    const nextSettings = { ...userSettings, active_lexicon_id: lexicon?.id || null };
+    const { error } = await supabase.from('user_settings').upsert({
+      owner_id: userId,
+      settings: nextSettings,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'owner_id' });
+    if (error) return alert(error.message);
+    setUserSettings(nextSettings);
   }
 
   async function saveText() {
@@ -471,7 +490,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
       if (error) return alert(error.message);
       targetLexicon = data as Lexicon;
       setLexicons(prev => [targetLexicon!, ...prev]);
-      setActiveLexicon(targetLexicon);
+      await selectActiveLexicon(targetLexicon);
     } else if (imported.meta?.language || imported.meta?.nativeLang) {
       await supabase.from('lexicons').update({ target_language: imported.meta.language || imported.meta.targetLang || targetLexicon.target_language, native_language: imported.meta.nativeLang || imported.meta.defLang || imported.meta.native || targetLexicon.native_language }).eq('id', targetLexicon.id);
     }
@@ -761,7 +780,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
         </nav>
         <section className="side-section">
           <header><span>Lexicons</span><button onClick={createLexicon} title="New lexicon"><Plus size={16}/></button></header>
-          <select value={activeLexicon?.id || ''} onChange={e => setActiveLexicon(lexicons.find(l => l.id === e.target.value) || null)}>
+          <select value={activeLexicon?.id || ''} onChange={e => void selectActiveLexicon(lexicons.find(l => l.id === e.target.value) || null)}>
             <option value="">No lexicon</option>
             {lexicons.map(l => <option key={l.id} value={l.id}>{l.title}</option>)}
           </select>
