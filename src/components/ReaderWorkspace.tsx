@@ -72,12 +72,21 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const autoFillAbortRef = useRef<AbortController | null>(null);
+  const entriesLoadRequestRef = useRef(0);
   const popupRef = useRef<HTMLDivElement>(null);
   const readerPanelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
 
   useEffect(() => { void refreshAll(); }, []);
-  useEffect(() => { if (activeLexicon) void loadEntries(activeLexicon.id); }, [activeLexicon?.id]);
+  useEffect(() => {
+    setSelected(null);
+    setReaderPopup(current => ({ ...current, open: false }));
+    if (activeLexicon) void loadEntries(activeLexicon.id);
+    else {
+      entriesLoadRequestRef.current += 1;
+      setEntries([]);
+    }
+  }, [activeLexicon?.id]);
   useEffect(() => () => {
     window.speechSynthesis.cancel();
     utteranceRef.current = null;
@@ -176,6 +185,8 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
 
   async function loadEntries(lexiconId: string) {
     if (!supabase) return;
+    const requestId = ++entriesLoadRequestRef.current;
+    setEntries([]);
     const pageSize = 1000;
     const allEntries: LexiconEntry[] = [];
     for (let from = 0; ; from += pageSize) {
@@ -185,15 +196,16 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
         .eq('lexicon_id', lexiconId)
         .order('target')
         .range(from, from + pageSize - 1);
+      if (requestId !== entriesLoadRequestRef.current) return;
       if (error) {
         alert(error.message);
-        break;
+        return;
       }
       const page = (data || []) as LexiconEntry[];
       allEntries.push(...page);
       if (page.length < pageSize) break;
     }
-    setEntries(allEntries);
+    if (requestId === entriesLoadRequestRef.current) setEntries(allEntries);
   }
 
   async function createLexicon() {
