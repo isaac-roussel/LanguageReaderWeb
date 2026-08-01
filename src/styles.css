@@ -132,6 +132,12 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .review-card h2 { margin: 0; }
 .flash-term { font-size: 38px; font-weight: 800; overflow-wrap: anywhere; }
 .flash-defs { font-size: 18px; color: #4d5c72; min-height: 80px; }
+@media (min-width: 981px) {
+  .app-shell { height: 100dvh; min-height: 0; overflow: hidden; }
+  .sidebar { min-height: 0; overflow-y: auto; }
+  .workspace { min-height: 0; overflow: hidden; }
+  .reader-grid, .reader-panel { min-height: 0; }
+}
 @media (max-width: 980px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; }
