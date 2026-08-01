@@ -1,4 +1,4 @@
-import { BookOpen, Bookmark, ClipboardPaste, Download, FilePlus, Import, Library, LogOut, Plus, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react';
+import { BookOpen, Bookmark, ClipboardPaste, Download, FilePlus, Import, Library, LogOut, Pencil, Plus, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -60,6 +60,9 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [isAddingText, setIsAddingText] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
+  const [isEditingStory, setIsEditingStory] = useState(false);
+  const [storyEditDraft, setStoryEditDraft] = useState('');
+  const [isSavingStoryEdit, setIsSavingStoryEdit] = useState(false);
   const [readerTokenSelection, setReaderTokenSelection] = useState<ReaderTokenSelection[]>([]);
   const [readerPopup, setReaderPopup] = useState<ReaderPopup>({ open: false, x: 0, y: 0, anchor: null, manual: false });
   const [popupTokenPosition, setPopupTokenPosition] = useState<TextBookmark | null>(null);
@@ -92,6 +95,11 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     utteranceRef.current = null;
   }, []);
   useEffect(() => setReaderTokenSelection([]), [activeText?.id, readerMode, sentenceIndex]);
+  useEffect(() => {
+    setIsEditingStory(false);
+    setStoryEditDraft('');
+    setIsSavingStoryEdit(false);
+  }, [activeText?.id]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setReaderPopup(current => ({ ...current, open: false }));
@@ -242,6 +250,69 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     setDraftTitle('');
     setSentenceIndex(0);
     setIsAddingText(false);
+  }
+
+  function startEditingStory() {
+    if (!activeText) return;
+    stopSpeech();
+    setReaderPopup(current => ({ ...current, open: false }));
+    setStoryEditDraft(activeText.content);
+    setIsEditingStory(true);
+  }
+
+  function cancelEditingStory() {
+    setStoryEditDraft('');
+    setIsEditingStory(false);
+  }
+
+  async function saveStoryEdit() {
+    if (!supabase || !activeText || !storyEditDraft.trim() || isSavingStoryEdit) return;
+    if (storyEditDraft === activeText.content) {
+      cancelEditingStory();
+      return;
+    }
+
+    setIsSavingStoryEdit(true);
+    const { data, error } = await supabase
+      .from('texts')
+      .update({ content: storyEditDraft })
+      .eq('id', activeText.id)
+      .select('*')
+      .single();
+
+    if (error) {
+      setIsSavingStoryEdit(false);
+      alert(error.message);
+      return;
+    }
+
+    const savedText = data as TextDoc;
+    setTexts(current => current.map(text => text.id === savedText.id ? savedText : text));
+    setActiveText(savedText);
+    const nextSentenceCount = parseSentences(savedText.content).length;
+    setSentenceIndex(current => Math.min(current, Math.max(0, nextSentenceCount - 1)));
+    setStoryEditDraft('');
+    setIsEditingStory(false);
+
+    if (textBookmarks[savedText.id]) {
+      const nextBookmarks = { ...textBookmarks };
+      delete nextBookmarks[savedText.id];
+      const nextSettings = { ...userSettings, text_bookmarks: nextBookmarks };
+      const { error: bookmarkError } = await supabase.from('user_settings').upsert({
+        owner_id: userId,
+        settings: nextSettings,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'owner_id' });
+
+      if (bookmarkError) {
+        alert(`Story saved, but its bookmark could not be cleared: ${bookmarkError.message}`);
+      } else {
+        setTextBookmarks(nextBookmarks);
+        setUserSettings(nextSettings);
+      }
+    }
+
+    setIsSavingStoryEdit(false);
   }
 
   async function upsertEntry(target: string, patch: Partial<LexiconEntry>, forceSelect = false) {
@@ -812,8 +883,8 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
           <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={e => e.target.files?.[0] && void importJson(e.target.files[0])}/>
         </section>
         <section className="side-section">
-          <header><span>Texts</span><button onClick={startNewText} title="New story"><Plus size={16}/></button></header>
-          <select value={activeText?.id || ''} onChange={e => { setActiveText(texts.find(t => t.id === e.target.value) || null); setSentenceIndex(0); }}>
+          <header><span>Texts</span><button disabled={isEditingStory || isSavingStoryEdit} onClick={startNewText} title="New story"><Plus size={16}/></button></header>
+          <select disabled={isEditingStory || isSavingStoryEdit} value={activeText?.id || ''} onChange={e => { setActiveText(texts.find(t => t.id === e.target.value) || null); setSentenceIndex(0); }}>
             <option value="">No text</option>
             {texts.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
           </select>
@@ -859,7 +930,19 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                 {activeText && <button onClick={() => setIsAddingText(false)}>Cancel</button>}
               </div>
             </div>}
-            {activeText && !isAddingText && <>
+            {activeText && !isAddingText && isEditingStory && <div className="story-editor">
+              <textarea
+                aria-label="Story text"
+                value={storyEditDraft}
+                onChange={event => setStoryEditDraft(event.target.value)}
+                autoFocus
+              />
+              <div className="button-row">
+                <button className="primary" disabled={!storyEditDraft.trim() || isSavingStoryEdit} onClick={() => void saveStoryEdit()}><Save size={16}/> {isSavingStoryEdit ? 'Saving...' : 'Save changes'}</button>
+                <button disabled={isSavingStoryEdit} onClick={cancelEditingStory}>Cancel</button>
+              </div>
+            </div>}
+            {activeText && !isAddingText && !isEditingStory && <>
               <div className="reader-toolbar">
                 <div className="segmented small"><button className={readerMode === 'sentence' ? 'active' : ''} onClick={() => changeReaderMode('sentence')}>Sentence</button><button className={readerMode === 'full' ? 'active' : ''} onClick={() => changeReaderMode('full')}>Full text</button></div>
                 {readerMode === 'sentence' && <div className="pager"><button onClick={() => setSentenceIndex(Math.max(0, sentenceIndex - 1))}>Previous</button><span>{Math.min(sentenceIndex + 1, sentences.length)} / {sentences.length}</span><button onClick={() => setSentenceIndex(Math.min(sentences.length - 1, sentenceIndex + 1))}>Next</button></div>}
@@ -868,6 +951,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                   <button disabled={!activeLexicon} onClick={() => void addSelectedPhrase()}>Add phrase</button>
                   {selectedReaderPhrase && <button className="ghost" onClick={() => setReaderTokenSelection([])}>Clear</button>}
                   <button disabled={!activeText || !textBookmarks[activeText.id]} onClick={goToBookmark}><Bookmark size={16}/> Go to bookmark</button>
+                  <button onClick={startEditingStory}><Pencil size={16}/> Edit story</button>
                 </div>
                 <label className="rate-control">Speed <input type="range" min="0.25" max="1" step="0.05" value={speechRate} onChange={event => setSpeechRate(Number(event.target.value))}/><span>{speechRate.toFixed(2)}x</span></label>
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
