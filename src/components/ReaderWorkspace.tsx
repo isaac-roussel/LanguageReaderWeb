@@ -464,9 +464,14 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     if (!activeText) return;
     const bookmark = textBookmarks[activeText.id];
     if (!bookmark) return;
-    setReaderMode('sentence');
     setSentenceIndex(bookmark.sentenceIndex);
     setReaderPopup(current => ({ ...current, open: false }));
+    window.requestAnimationFrame(() => {
+      const token = readerPanelRef.current?.querySelector<HTMLElement>(
+        `[data-reader-token-key="${bookmark.sentenceIndex}:${bookmark.tokenIndex}"]`
+      );
+      token?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   }
 
   async function deleteSelectedEntry() {
