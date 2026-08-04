@@ -69,6 +69,11 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .rate-control input { width: 96px; padding: 0; }
 .rate-control span { min-width: 42px; color: #172033; font-size: 13px; font-variant-numeric: tabular-nums; }
 .phrase-preview { flex-basis: 100%; color: #334155; font-size: 13px; background: #eef4ff; border: 1px solid #c9d8f5; border-radius: 6px; padding: 6px 8px; overflow-wrap: anywhere; }
+.sentence-translation { flex-basis: 100%; color: #172033; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 12px; }
+.sentence-translation span { display: block; color: #3f6b4d; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.sentence-translation p { margin: 4px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.sentence-translation.error { color: #991b1b; background: #fef2f2; border-color: #fecaca; }
+.sentence-translation.error span { color: #991b1b; }
 .reader-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 7px 12px; border-bottom: 1px solid #e3e9f2; background: #fbfcfe; }
 .reader-summary p { margin: 0; color: #4d5c72; font-size: 12px; line-height: 1.3; }
 .reader-counts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

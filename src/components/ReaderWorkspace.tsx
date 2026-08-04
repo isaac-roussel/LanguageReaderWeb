@@ -1,4 +1,4 @@
-import { BookOpen, Bookmark, ClipboardPaste, Download, FilePlus, Import, Library, LogOut, Pencil, Plus, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react';
+import { BookOpen, Bookmark, ClipboardPaste, Download, FilePlus, Import, Languages, Library, LogOut, Pencil, Plus, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -17,6 +17,7 @@ type TextBookmark = { sentenceIndex: number; tokenIndex: number };
 type TextBookmarks = Record<string, TextBookmark>;
 type TranslationProvider = 'google' | 'deepl';
 type LocalConnection = 'idle' | 'checking' | 'connected' | 'offline';
+type SentenceTranslation = { status: 'idle' | 'translating' | 'translated' | 'error'; text: string };
 type AutoFillFailure = { word: string; reason: string };
 type AutoFillState = {
   running: boolean;
@@ -71,10 +72,12 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
   const [isSavingTranslationProvider, setIsSavingTranslationProvider] = useState(false);
   const [localConnection, setLocalConnection] = useState<LocalConnection>('idle');
   const [localConnectionMessage, setLocalConnectionMessage] = useState('Not tested');
+  const [sentenceTranslation, setSentenceTranslation] = useState<SentenceTranslation>({ status: 'idle', text: '' });
   const [autoFillState, setAutoFillState] = useState<AutoFillState>(initialAutoFillState);
   const importRef = useRef<HTMLInputElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const autoFillAbortRef = useRef<AbortController | null>(null);
+  const sentenceTranslationAbortRef = useRef<AbortController | null>(null);
   const entriesLoadRequestRef = useRef(0);
   const popupRef = useRef<HTMLDivElement>(null);
   const readerPanelRef = useRef<HTMLDivElement>(null);
@@ -95,6 +98,11 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     utteranceRef.current = null;
   }, []);
   useEffect(() => setReaderTokenSelection([]), [activeText?.id, readerMode, sentenceIndex]);
+  useEffect(() => {
+    sentenceTranslationAbortRef.current?.abort();
+    sentenceTranslationAbortRef.current = null;
+    setSentenceTranslation({ status: 'idle', text: '' });
+  }, [activeText?.id, activeLexicon?.id, readerMode, sentenceIndex]);
   useEffect(() => {
     setIsEditingStory(false);
     setStoryEditDraft('');
@@ -129,6 +137,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
       : current);
   }, [activeText?.id, activeLexicon?.id]);
   useEffect(() => () => autoFillAbortRef.current?.abort(), []);
+  useEffect(() => () => sentenceTranslationAbortRef.current?.abort(), []);
 
   const entryMap = useMemo(() => new Map(entries.map(e => [e.normalized_key, e])), [entries]);
   const sentences = useMemo(() => parseSentences(activeText?.content || ''), [activeText?.content]);
@@ -545,6 +554,41 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
     });
   }
 
+  async function translateCurrentSentence() {
+    if (!activeLexicon || readerMode !== 'sentence' || sentenceTranslation.status === 'translating') return;
+    const sentence = sentences[sentenceIndex];
+    if (!sentence) return;
+
+    const sourceText = sentenceToText(sentence.tokens).trim();
+    if (!sourceText) return;
+
+    const controller = new AbortController();
+    sentenceTranslationAbortRef.current?.abort();
+    sentenceTranslationAbortRef.current = controller;
+    setSentenceTranslation({ status: 'translating', text: '' });
+
+    try {
+      const output = await translateWithLibreTranslate(
+        sourceText,
+        activeLexicon.target_language || 'auto',
+        activeLexicon.native_language || 'en',
+        controller.signal
+      );
+      if (controller.signal.aborted) return;
+      if (!output) throw new Error('LibreTranslate returned an empty translation.');
+      setLocalConnection('connected');
+      setLocalConnectionMessage('Connected to LibreTranslate');
+      setSentenceTranslation({ status: 'translated', text: output });
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setLocalConnection('offline');
+      setLocalConnectionMessage(localTranslationError(error));
+      setSentenceTranslation({ status: 'error', text: localTranslationError(error) });
+    } finally {
+      if (sentenceTranslationAbortRef.current === controller) sentenceTranslationAbortRef.current = null;
+    }
+  }
+
   async function deleteSelectedEntry() {
     if (!supabase || !selected) return;
     const confirmed = window.confirm(`Delete "${selected.target}" from this lexicon? This cannot be undone.`);
@@ -955,7 +999,18 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
                 </div>
                 <label className="rate-control">Speed <input type="range" min="0.25" max="1" step="0.05" value={speechRate} onChange={event => setSpeechRate(Number(event.target.value))}/><span>{speechRate.toFixed(2)}x</span></label>
                 <button className={isReading ? 'danger' : ''} onClick={() => isReading ? stopSpeech() : speak(sentenceToText(visibleSentences.flatMap(s => s.tokens)))}>{isReading ? 'Stop' : 'Read'}</button>
+                {readerMode === 'sentence' && isLocalTranslationOwner && <button
+                  disabled={!activeLexicon || !sentences[sentenceIndex] || sentenceTranslation.status === 'translating'}
+                  onClick={() => void translateCurrentSentence()}
+                ><Languages size={16}/> {sentenceTranslation.status === 'translating' ? 'Translating...' : sentenceTranslation.status === 'translated' ? 'Translate again' : 'Translate sentence'}</button>}
                 {selectedReaderPhrase && <div className="phrase-preview">{selectedReaderPhrase}</div>}
+                {readerMode === 'sentence' && sentenceTranslation.status !== 'idle' && sentenceTranslation.status !== 'translating' && <div
+                  className={`sentence-translation ${sentenceTranslation.status === 'error' ? 'error' : ''}`}
+                  role={sentenceTranslation.status === 'error' ? 'alert' : 'status'}
+                >
+                  <span>{sentenceTranslation.status === 'error' ? 'Translation failed' : `${activeLexicon?.native_language || 'en'} translation`}</span>
+                  <p>{sentenceTranslation.text}</p>
+                </div>}
               </div>
               <section className="reader-summary">
                 <p>Ctrl-click multiple words, then click Look up to create or open a phrase.</p>
