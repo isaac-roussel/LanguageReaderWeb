@@ -139,6 +139,28 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 .review-card h2 { margin: 0; }
 .flash-term { font-size: 38px; font-weight: 800; overflow-wrap: anywhere; }
 .flash-defs { font-size: 18px; color: #4d5c72; min-height: 80px; }
+.user-manual { padding: clamp(22px, 4vw, 48px); overflow-y: auto; line-height: 1.65; }
+.user-manual > * { max-width: 900px; margin-left: auto; margin-right: auto; }
+.user-manual h2 { margin: 0; font-size: clamp(28px, 4vw, 42px); }
+.user-manual h3 { margin: 0 0 10px; font-size: 23px; }
+.user-manual h4 { margin: 22px 0 5px; font-size: 17px; }
+.user-manual p { margin: 7px 0; color: #42526b; }
+.user-manual section { padding: 30px 0; border-top: 1px solid #e3e9f2; scroll-margin-top: 20px; }
+.user-manual li + li { margin-top: 8px; }
+.user-manual kbd { border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 4px; background: #f8fafc; padding: 1px 5px; font: inherit; font-size: .9em; }
+.manual-intro { padding-bottom: 26px; }
+.manual-intro > p:last-child { max-width: 720px; font-size: 17px; }
+.manual-contents { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.manual-contents a { color: #1b4ed8; background: #fff; border: 1px solid #d8e0ec; border-radius: 999px; padding: 5px 10px; text-decoration: none; font-size: 13px; }
+.manual-contents a:hover { border-color: #1b4ed8; }
+.user-manual dl { display: grid; gap: 12px; }
+.user-manual dl div { display: grid; grid-template-columns: 150px 1fr; gap: 18px; }
+.user-manual dt { font-weight: 750; }
+.user-manual dd { margin: 0; color: #42526b; }
+.manual-statuses { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 18px; }
+.manual-statuses span { border: 1px solid currentColor; border-radius: 6px; padding: 8px 10px; }
+.manual-special { margin-top: 10px; padding: 26px !important; border: 1px solid #c4b5fd !important; border-radius: 8px; background: #f5f3ff; }
+.special-request-label { display: inline-block; margin-bottom: 7px; color: #5b21b6; background: #ede9fe; border: 1px solid #c4b5fd; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 @media (min-width: 981px) {
   .app-shell { height: 100dvh; min-height: 0; overflow: hidden; }
   .sidebar { min-height: 0; overflow-y: auto; }
@@ -156,4 +178,6 @@ code { background: #eef2f7; border: 1px solid #d7dee9; border-radius: 4px; paddi
 @media (max-width: 700px) {
   .reader-popup { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: 100%; max-width: none; max-height: 78vh; border-radius: 8px 8px 0 0; }
   .reader-popup-titlebar { cursor: default; touch-action: auto; }
+  .user-manual dl div { grid-template-columns: 1fr; gap: 2px; }
+  .manual-statuses { grid-template-columns: 1fr; }
 }

@@ -1,4 +1,4 @@
-import { BookOpen, Bookmark, ClipboardPaste, Download, FilePlus, Import, Languages, Library, LogOut, Pencil, Plus, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react';
+import { BookOpen, Bookmark, CircleHelp, ClipboardPaste, Download, FilePlus, Import, Languages, Library, LogOut, Pencil, Plus, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -9,7 +9,7 @@ import { checkTranslation, collectAutoFillCandidates, testLibreTranslate, transl
 import { isWordToken, parseSentences, pickSpeechLocale, sentenceToText } from '../utils/text';
 
 type Props = { session: Session; onSignOut: () => void };
-type View = 'reader' | 'dictionary' | 'review';
+type View = 'reader' | 'dictionary' | 'review' | 'manual';
 type ReaderTokenSelection = { key: string; text: string; order: number };
 type PopupAnchor = { left: number; top: number; right: number; bottom: number };
 type ReaderPopup = { open: boolean; x: number; y: number; anchor: PopupAnchor | null; manual: boolean };
@@ -909,6 +909,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
           <button className={view === 'reader' ? 'active' : ''} onClick={() => setView('reader')}><BookOpen size={17}/> Reader</button>
           <button className={view === 'dictionary' ? 'active' : ''} onClick={() => setView('dictionary')}><Library size={17}/> Dictionary</button>
           <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}><Sparkles size={17}/> Review</button>
+          <button className={view === 'manual' ? 'active' : ''} onClick={() => setView('manual')}><CircleHelp size={17}/> User Manual</button>
         </nav>
         <section className="side-section">
           <header><span>Lexicons</span><button onClick={createLexicon} title="New lexicon"><Plus size={16}/></button></header>
@@ -961,7 +962,7 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
 
       <main className="workspace">
         <header className="topbar">
-          <div><p className="eyebrow">Invite-only web beta</p><h1>{view === 'reader' ? activeText?.title || 'Reader' : view === 'dictionary' ? 'Dictionary' : 'Review'}</h1></div>
+          <div><p className="eyebrow">Invite-only web beta</p><h1>{view === 'reader' ? activeText?.title || 'Reader' : view === 'dictionary' ? 'Dictionary' : view === 'review' ? 'Review' : 'User Manual'}</h1></div>
         </header>
 
         {view === 'reader' && <section className="reader-grid">
@@ -1108,6 +1109,8 @@ export default function ReaderWorkspace({ session, onSignOut }: Props) {
           <ReviewColumn title="Familiar flashcards" entries={familiar} actionLabel="Mark seen" onAction={e => upsertEntry(e.target, { status: 2 })}/>
           <ReviewColumn title="SRS practice" entries={due} actionLabel="Mark known" onAction={e => upsertEntry(e.target, { status: 4 })}/>
         </section>}
+
+        {view === 'manual' && <UserManual/>}
       </main>
     </div>
   );
@@ -1209,6 +1212,88 @@ function EntryEditorFields({ selected, onChange, onTranslate, translationProvide
       <button className="danger" onClick={onDelete}>Delete</button>
     </div>
   </>;
+}
+
+function UserManual() {
+  return <article className="panel user-manual">
+    <header className="manual-intro">
+      <p className="eyebrow">Language Reader Web</p>
+      <h2>How to use the app</h2>
+      <p>Language Reader helps you read in another language, build a personal lexicon as you go, and review what you learn. Your texts, lexicons, settings, and reading bookmarks follow your signed-in account.</p>
+    </header>
+
+    <nav className="manual-contents" aria-label="Manual contents">
+      <a href="#manual-start">Getting started</a>
+      <a href="#manual-reader">Reader</a>
+      <a href="#manual-words">Words and phrases</a>
+      <a href="#manual-dictionary">Dictionary</a>
+      <a href="#manual-review">Review</a>
+      <a href="#manual-transfer">Import and export</a>
+      <a href="#manual-special">Special-request features</a>
+    </nav>
+
+    <section id="manual-start">
+      <h3>Getting started</h3>
+      <ol>
+        <li><strong>Choose or create a lexicon.</strong> Use the Lexicons menu on the left. A lexicon stores the words and phrases for one target language, along with definitions in your native language.</li>
+        <li><strong>Choose or add a text.</strong> Use the Texts menu, or its plus button, to paste a story or article and give it a title.</li>
+        <li><strong>Start reading.</strong> Words are color-coded by learning status. Click any word to open its entry without leaving the text.</li>
+      </ol>
+    </section>
+
+    <section id="manual-reader">
+      <h3>Reading texts</h3>
+      <dl>
+        <div><dt>Sentence mode</dt><dd>Shows one sentence at a time. Use Previous and Next to move through the text.</dd></div>
+        <div><dt>Full text mode</dt><dd>Shows the entire text on one scrollable page.</dd></div>
+        <div><dt>Read aloud</dt><dd>Click Read to hear the visible sentence or full text using your browser's speech voice. Use the Speed control to slow down or speed up playback.</dd></div>
+        <div><dt>Edit story</dt><dd>Correct or replace the current text. Saving an edit clears its old bookmark because word positions may have changed.</dd></div>
+        <div><dt>Reading counts</dt><dd>The summary bar shows total words and counts for Unknown, Ignored, New, Seen, Familiar, and Known words.</dd></div>
+      </dl>
+    </section>
+
+    <section id="manual-words">
+      <h3>Words, phrases, and bookmarks</h3>
+      <p>Click a word to open the movable entry panel. Add definitions and notes, translate it with Google Translate or DeepL, change its learning status, or delete the entry. Definitions can be pasted directly from your clipboard. Press <kbd>0</kbd> through <kbd>4</kbd> while editing an entry to change its status quickly.</p>
+      <div className="manual-statuses" aria-label="Learning statuses">
+        <span className="status-0"><strong>0 Ignored</strong> — excluded from study</span>
+        <span className="status-1"><strong>1 New</strong> — newly encountered</span>
+        <span className="status-2"><strong>2 Seen</strong> — reviewed once</span>
+        <span className="status-3"><strong>3 Familiar</strong> — becoming comfortable</span>
+        <span className="status-4"><strong>4 Known</strong> — learned</span>
+      </div>
+      <h4>Phrases</h4>
+      <p>Hold Ctrl (or Command on a Mac) and click several words, then choose Look up or Add phrase. Saved phrases appear with a dotted underline colored by their status. Use Clear to end a multi-word selection.</p>
+      <h4>Bookmarks</h4>
+      <p>Open a word and click the bookmark icon in the entry panel to save that exact reading position. Choose Go to bookmark later to return to it. Each text keeps its own bookmark.</p>
+    </section>
+
+    <section id="manual-dictionary">
+      <h3>Dictionary</h3>
+      <p>The Dictionary lists every entry in the active lexicon. Search across target words, definitions, and notes; select an entry to edit its definitions, notes, status, translation service, or delete it. Changes made here also update the word colors in the Reader.</p>
+    </section>
+
+    <section id="manual-review">
+      <h3>Review</h3>
+      <p>The Review page offers two lightweight study queues. Familiar flashcards let you cycle through Familiar entries and mark them Seen. SRS practice includes study-active entries and lets you mark them Known. Use Next to skip to another card.</p>
+    </section>
+
+    <section id="manual-transfer">
+      <h3>Import and export</h3>
+      <p>Use Import to bring in a compatible lexicon JSON file, including its language settings, definitions, statuses, word-or-phrase scope, notes, and review metadata. Export downloads the active lexicon in the desktop-compatible JSON format for backup or transfer.</p>
+    </section>
+
+    <section id="manual-special" className="manual-special">
+      <div className="special-request-label">Special request only</div>
+      <h3>Local LibreTranslate features</h3>
+      <p>These tools are enabled only for specifically approved accounts and require LibreTranslate to be running locally at <code>http://127.0.0.1:5000</code>. Text is sent directly from the browser to that local service, not through the hosted app.</p>
+      <ul>
+        <li><strong>Translate sentence:</strong> In Sentence mode, translate the entire visible sentence into the active lexicon's native language and show the result inline.</li>
+        <li><strong>Fill new definitions:</strong> Test the local connection, find New words in the active text that lack definitions, translate them in sequence, and save acceptable results automatically. Progress can be stopped, and failed words are reported for review.</li>
+      </ul>
+      <p>Access to these features is available by special request only.</p>
+    </section>
+  </article>;
 }
 
 function ReviewColumn({ title, entries, actionLabel, onAction }: { title: string; entries: LexiconEntry[]; actionLabel: string; onAction: (entry: LexiconEntry) => void }) {
