@@ -1,0 +1,52 @@
+name: Supabase keepalive
+
+on:
+  schedule:
+    # GitHub Actions cron uses UTC. Run every eight hours, away from the top of the hour.
+    - cron: "17 */8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: false
+
+jobs:
+  query-database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check out repository configuration
+        uses: actions/checkout@v4
+
+      - name: Run a lightweight database query
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          set -a
+          source .env.production
+          set +a
+
+          response_file="$(mktemp)"
+          http_code="$({
+            curl --silent --show-error \
+              --output "${response_file}" \
+              --write-out "%{http_code}" \
+              --get "${VITE_SUPABASE_URL}/rest/v1/lexicons" \
+              --data-urlencode "select=id" \
+              --data-urlencode "limit=1" \
+              --header "apikey: ${VITE_SUPABASE_ANON_KEY}" \
+              --header "Authorization: Bearer ${VITE_SUPABASE_ANON_KEY}" \
+              --header "Accept: application/json"
+          })"
+
+          if [[ "${http_code}" -lt 200 || "${http_code}" -ge 300 ]]; then
+            echo "Supabase query failed with HTTP ${http_code}."
+            cat "${response_file}"
+            exit 1
+          fi
+
+          echo "Supabase database responded successfully with HTTP ${http_code}."
