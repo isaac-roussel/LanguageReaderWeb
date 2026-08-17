@@ -2,7 +2,7 @@ name: Supabase keepalive
 
 on:
   schedule:
-    # GitHub Actions cron uses UTC. Run every eight hours, away from the top of the hour.
+    # GitHub Actions cron uses UTC. Run three times daily, away from the top of the hour.
     - cron: "17 */8 * * *"
   workflow_dispatch:
 
