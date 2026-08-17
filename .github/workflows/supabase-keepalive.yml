@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Check out repository configuration
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run a lightweight database query
         shell: bash
